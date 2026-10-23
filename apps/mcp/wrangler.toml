@@ -1,0 +1,6 @@
+# ElectroHire remote MCP server Worker.
+# Deploys to Cloudflare Workers (free-tier-first). The production custom
+# domain / routes are attached at deploy time, not in this scaffold.
+name = "electrohire-mcp"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"

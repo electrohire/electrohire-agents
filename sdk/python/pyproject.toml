@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "electrohire"
+version = "0.1.0"
+description = "Python client for the ElectroHire API — the AI-powered electronics engineering marketplace."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "ElectroHire Inc." }]
+keywords = ["electrohire", "marketplace", "electronics-engineering", "ai-agents", "mcp"]
+classifiers = [
+  "Development Status :: 2 - Pre-Alpha",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+]
+
+[project.urls]
+Homepage = "https://electrohire.com"
+Repository = "https://github.com/electrohire/electrohire-agents"
+Issues = "https://github.com/electrohire/electrohire-agents/issues"
+
+[tool.setuptools.packages.find]
+where = ["src"]

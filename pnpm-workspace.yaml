@@ -1,0 +1,11 @@
+packages:
+  - "apps/*"
+
+# Wrangler's toolchain binaries; required so `wrangler dev`/`deploy` work
+# from a fresh install (pnpm blocks dependency build scripts by default).
+minimumReleaseAgeExclude:
+  - "@cloudflare/workers-types@5.20261023.1"
+  - wrangler@4.152.0
+allowBuilds:
+  esbuild: true
+  workerd: true
