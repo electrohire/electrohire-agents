@@ -99,3 +99,27 @@ be the first thing that justifies a paid Workers plan.
 - Payments events are only ever acted on from signature-verified webhooks, never
   from a client success signal.
 - See [SECURITY.md](../SECURITY.md) for reporting a vulnerability.
+
+## AI provider policy
+
+**Settled, owner-directed 2026-10-23.** Any AI feature in this repository's
+components — the API, the MCP server, and anything built on them — makes its
+model calls through the **OpenRouter API** only. There are no direct integrations
+with any model provider (no OpenAI, Anthropic, Google, or other provider
+accounts or keys) in these components. One gateway, one bill, one
+key-management point; OpenRouter keys live only as server-side secrets (Worker
+secrets), never in client code.
+
+- **SDKs never embed provider keys** and never call a model provider directly;
+  they call this API, which calls OpenRouter.
+- **Example code uses OpenRouter endpoints only** — no provider-specific
+  endpoints or SDKs in examples, skills, or docs.
+- **Open-weight models served through OpenRouter are the preferred class**
+  (program direction, 2026-09-16).
+
+**Open item (unanswered, do not assume):** whether OpenAI-family models reached
+*through* OpenRouter are in or out of scope awaits the owner's confirmation.
+The policy governs the access route (the gateway); nothing in this repository
+should silently assume either answer to the model-family question. The full
+policy lives in the private website repo (`docs/AI-PROVIDER-POLICY.md` in
+electrohire-website-beta).
