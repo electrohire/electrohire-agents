@@ -9,6 +9,12 @@ version heading below tracks the repository release.
 
 ## [Unreleased]
 
+### Fixed
+
+- Release workflow now tolerates a release that was created outside the
+  workflow (it raced the manual `v0.1.0` release creation and reported a
+  spurious failure even though the release existed).
+
 ## [0.1.0] - 2026-10-23
 
 ### Added

@@ -35,7 +35,11 @@ jobs:
           if gh release view "$GITHUB_REF_NAME" > /dev/null 2>&1; then
             echo "Release $GITHUB_REF_NAME already exists; leaving it unchanged."
           else
+            # Tolerate a release created outside this workflow (e.g. manually
+            # at tag time): if the create loses that race, succeed as long as
+            # the release exists afterwards.
             gh release create "$GITHUB_REF_NAME" \
               --title "$GITHUB_REF_NAME" \
-              --notes-file release-notes.md
+              --notes-file release-notes.md \
+              || gh release view "$GITHUB_REF_NAME" > /dev/null
           fi
