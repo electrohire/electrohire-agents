@@ -1,0 +1,146 @@
+{
+  "version": "0.1.0",
+  "generated": "manual",
+  "mcpServer": {
+    "url": "https://mcp.electrohire.com/mcp",
+    "transport": "streamable-http"
+  },
+  "api": {
+    "baseUrl": "https://api.electrohire.com",
+    "openapiUrl": "https://api.electrohire.com/openapi.json"
+  },
+  "connectors": [
+    {
+      "id": "muse",
+      "name": "Meta Muse",
+      "platform": "Meta Muse",
+      "transport": "http",
+      "configFormat": "JSON (guide)",
+      "status": "guide",
+      "version": "0.1.0",
+      "folder": "connectors/muse",
+      "configExample": "muse-connector.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "openai-chatgpt",
+      "name": "ChatGPT (OpenAI)",
+      "platform": "ChatGPT",
+      "transport": "actions",
+      "configFormat": "JSON (connector description + OpenAPI Action)",
+      "status": "guide",
+      "version": "0.1.0",
+      "folder": "connectors/openai-chatgpt",
+      "configExample": "chatgpt-connector.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "openai-codex",
+      "name": "Codex CLI (OpenAI)",
+      "platform": "OpenAI Codex CLI",
+      "transport": "http",
+      "configFormat": "TOML",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/openai-codex",
+      "configExample": "config.toml",
+      "readme": "README.md"
+    },
+    {
+      "id": "claude-desktop",
+      "name": "Claude Desktop",
+      "platform": "Claude Desktop",
+      "transport": "stdio-bridge",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/claude-desktop",
+      "configExample": "claude_desktop_config.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "claude-code",
+      "name": "Claude Code",
+      "platform": "Claude Code",
+      "transport": "http",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/claude-code",
+      "configExample": ".mcp.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "ollama",
+      "name": "Ollama (via ollmcp bridge)",
+      "platform": "Ollama",
+      "transport": "stdio-bridge",
+      "configFormat": "JSON + CLI",
+      "status": "bridge",
+      "version": "0.1.0",
+      "folder": "connectors/ollama",
+      "configExample": "ollmcp-config.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "cursor",
+      "name": "Cursor",
+      "platform": "Cursor",
+      "transport": "http",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/cursor",
+      "configExample": "mcp.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "windsurf",
+      "name": "Windsurf",
+      "platform": "Windsurf",
+      "transport": "http",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/windsurf",
+      "configExample": "mcp_config.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "vscode-copilot",
+      "name": "VS Code + GitHub Copilot",
+      "platform": "Visual Studio Code / GitHub Copilot",
+      "transport": "http",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/vscode-copilot",
+      "configExample": "mcp.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "gemini",
+      "name": "Gemini CLI",
+      "platform": "Google Gemini CLI",
+      "transport": "http",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/gemini",
+      "configExample": "settings.json",
+      "readme": "README.md"
+    },
+    {
+      "id": "generic-mcp",
+      "name": "Any MCP client (generic)",
+      "platform": "Any MCP client",
+      "transport": "http",
+      "configFormat": "JSON",
+      "status": "config",
+      "version": "0.1.0",
+      "folder": "connectors/generic-mcp",
+      "configExample": "mcp.json",
+      "readme": "README.md"
+    }
+  ]
+}

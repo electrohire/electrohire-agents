@@ -9,6 +9,18 @@ version heading below tracks the repository release.
 
 ## [Unreleased]
 
+### Added
+
+- `connectors/` — agent-platform connectors for Meta Muse, ChatGPT, Codex
+  CLI, Claude Desktop, Claude Code, Ollama (via the ollmcp bridge), Cursor,
+  Windsurf, VS Code + Copilot, Gemini CLI, and any MCP client: a guide plus a
+  copy-ready config example per platform, a machine-readable
+  `connectors/registry.json`, a dependency-free validator
+  (`tools/validate-connectors.mjs`, wired into CI), and the
+  `docs/connectors.md` index covering dashboard MCP API keys, scopes,
+  testing, and revocation.
+
+
 ### Fixed
 
 - Release workflow now tolerates a release that was created outside the

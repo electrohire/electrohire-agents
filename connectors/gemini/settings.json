@@ -1,0 +1,10 @@
+{
+  "mcpServers": {
+    "electrohire": {
+      "httpUrl": "https://mcp.electrohire.com/mcp",
+      "headers": {
+        "Authorization": "Bearer ${ELECTROHIRE_API_KEY}"
+      }
+    }
+  }
+}

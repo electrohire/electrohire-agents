@@ -37,3 +37,15 @@ jobs:
       - name: Import smoke test
         run: |
           python -c "from electrohire import ElectroHireClient, __version__; c = ElectroHireClient('http://127.0.0.1:1'); print('electrohire', __version__, 'import ok:', c)"
+
+  connectors:
+    name: Connector guides validation
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Validate connector registry and config examples
+        run: node tools/validate-connectors.mjs
