@@ -1,0 +1,107 @@
+name: Security scan
+
+# Security scanning for the public agents repo (plan requirements X-01
+# and X-02 in the ElectroHire beta backends plan).
+#
+# What each job does, and how hard it bites:
+# - Secret scan (gitleaks): BLOCKING. If it finds anything that looks
+#   like a secret in the code or its history, this check fails, and a
+#   failing check means the pull request must not be merged. This is a
+#   public repo: a secret committed here is public the moment it lands.
+# - Dependency scan (OSV-Scanner): report-only for now. Known-vulnerable
+#   dependencies are listed in the uploaded report, but the check does
+#   not fail. Findings get triaged by a person.
+# - Code scan (Semgrep): report-only for now, same as above.
+#
+# This workflow only adds scanning. The existing CI checks (typecheck,
+# Python SDK smoke test) and the feature-parity and connector validators
+# are separate and are not changed by this file.
+#
+# Note on enforcement: this repo does not currently use branch
+# protection, so GitHub itself will not stop a merge while a check is
+# red. The blocking rule above is the team's merge discipline — never
+# merge a pull request with a failed secret scan. Switching on a
+# required status check for this job is a one-setting change whenever
+# the team wants it machine-enforced.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  secret-scan:
+    name: Secret scan — gitleaks (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out the code (full history, so history is scanned too)
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Install gitleaks (pinned version, checksum checked)
+        run: |
+          VERSION="8.30.1"
+          ARCHIVE="gitleaks_${VERSION}_linux_x64.tar.gz"
+          curl -sSfL -O "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/${ARCHIVE}"
+          curl -sSfL -O "https://github.com/gitleaks/gitleaks/releases/download/v${VERSION}/gitleaks_${VERSION}_checksums.txt"
+          grep " ${ARCHIVE}\$" "gitleaks_${VERSION}_checksums.txt" | sha256sum -c -
+          tar -xzf "${ARCHIVE}" gitleaks
+          ./gitleaks version
+
+      - name: Scan for secrets (a finding fails this check and blocks the merge)
+        # --redact keeps any found secret out of the logs.
+        run: ./gitleaks git --redact --verbose .
+
+  dependency-scan:
+    name: Dependency scan — OSV-Scanner (report-only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Scan the pnpm lockfile against the OSV database
+        uses: google/osv-scanner-action@v2.7.0
+        with:
+          scan-args: |-
+            --lockfile=pnpm-lock.yaml
+            --format=json
+            --output=osv-results.json
+
+      - name: Keep the scan report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: osv-scan-results
+          path: osv-results.json
+          if-no-files-found: ignore
+
+  code-scan:
+    name: Code scan — Semgrep (report-only)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    container:
+      image: semgrep/semgrep:1.182.1
+    steps:
+      - name: Check out the code
+        uses: actions/checkout@v7
+
+      - name: Run Semgrep with the standard community rules
+        run: |
+          semgrep scan --config auto --json --output semgrep-results.json . || true
+          if [ -f semgrep-results.json ]; then
+            COUNT="$(node -e "console.log((require('./semgrep-results.json').results || []).length)" 2>/dev/null || echo 'unknown number of')"
+            echo "Semgrep finished: ${COUNT} finding(s). Report-only — see the semgrep-scan-results artifact." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      - name: Keep the scan report
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: semgrep-scan-results
+          path: semgrep-results.json
+          if-no-files-found: ignore
