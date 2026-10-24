@@ -1,4 +1,3 @@
-# X-02 seeded scanner test - this is a FAKE credential, fabricated for
-# the scanner proof. It is not real, was never valid, and this file must
-# never be merged. The scratch branch carrying it is deleted after the run.
-example_github_token = "ghp_X02SEEDEDFAKE000000000000000000000ab"
+# X-02 seeded scanner test - FAKE fabricated values, never issued, not valid anywhere.
+api_key = "sBjJ3yTTXEfr3wzxNTvoFTVesVzBgbCEGuYQduM8S97MSBb3"
+client_secret = "izjlnuupC5oPsaEOOKXYHlNRGg1aTKAmeVGvL0l4MLANZ6l2"
