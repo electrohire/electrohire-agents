@@ -35,3 +35,4 @@ venv/
 .env.*
 !.env.example
 coverage/
+c2-seed.json
