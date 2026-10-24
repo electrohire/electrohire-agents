@@ -30,17 +30,29 @@ def start(port, extra_vars):
             "--inspector-port", str(port + 2000)]
     for k, v in extra_vars.items():
         args += ["--var", f"{k}:{v}"]
-    proc = subprocess.Popen(args, cwd=API_DIR, stdout=subprocess.DEVNULL,
-                            stderr=subprocess.DEVNULL, start_new_session=True)
+    logpath = f"/tmp/c1-drill-{port}.log"
+    logfile = open(logpath, "wb")
+    proc = subprocess.Popen(args, cwd=API_DIR, stdout=logfile,
+                            stderr=subprocess.STDOUT, start_new_session=True)
     url = f"http://127.0.0.1:{port}"
-    want = 503 if extra_vars.get("GLOBAL_KILL_SWITCH") == "1" else 200
-    for _ in range(90):
+    # Readiness comes from the server's OWN log line ("Ready on ..."),
+    # never from HTTP polls: an earlier version of this drill polled
+    # /v1/health, and every poll consumed one of the rate limiter's slots,
+    # so the drill's expected sequence depended on how many polls boot
+    # happened to take (observed: 1 or 2 — the drill failed on its own
+    # bookkeeping while the limiter tripped correctly every time).
+    # With log readiness, zero slots are consumed before the drill acts.
+    for _ in range(120):
         try:
-            if req(url + "/v1/health")[0] == want: return proc, url
-        except Exception:
+            if f"Ready on http://127.0.0.1:{port}" in open(logpath).read():
+                time.sleep(1)  # the listener accepts a beat after the line prints
+                return proc, url
+        except FileNotFoundError:
             pass
+        if proc.poll() is not None:
+            raise SystemExit(f"drill instance on {port} exited during boot; log: {logpath}")
         time.sleep(1)
-    raise SystemExit(f"drill instance on {port} never answered health with {want}")
+    raise SystemExit(f"drill instance on {port} never became ready; log: {logpath}")
 
 def req(url, data=None):
     r = urllib.request.Request(url, data=json.dumps(data).encode() if data is not None else None,
@@ -63,10 +75,10 @@ def check(name, ok, detail):
 # Drill 1 — rate limit trips (limit 3/minute on this instance)
 proc, url = start(8791, {"RATE_LIMIT_PER_MINUTE": "3"})
 try:
-    # start()'s readiness poll was request #1 against the limit of 3, so
-    # two more 200s are expected and the limit must trip after that.
+    # Log-based readiness consumed no limiter slots, so the exact
+    # sequence stands: 3 successes at the limit of 3, then 429s.
     codes = [req(url + "/v1/health")[0] for _ in range(5)]
-    check("rate-limit trips", codes[:2] == [200, 200] and all(c == 429 for c in codes[2:]), f"sequence (after 1 readiness poll) {codes}")
+    check("rate-limit trips", codes[:3] == [200, 200, 200] and all(c == 429 for c in codes[3:]), f"sequence {codes}")
 finally: stop(proc)
 
 # Drill 2 — one tool off while others serve
