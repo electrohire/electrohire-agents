@@ -59,18 +59,43 @@ jobs:
   dependency-scan:
     name: Dependency scan — OSV-Scanner (report-only)
     runs-on: ubuntu-latest
-    continue-on-error: true
     steps:
       - name: Check out the code
         uses: actions/checkout@v7
 
+      # Report-only: the scan step is allowed to "fail" (that is how the
+      # scanner reports that it found vulnerable dependencies) without
+      # failing this job. The findings are surfaced in the summary step
+      # below and in the uploaded report instead.
       - name: Scan the pnpm lockfile against the OSV database
-        uses: google/osv-scanner-action@v2.7.0
+        id: osv
+        continue-on-error: true
+        uses: google/osv-scanner-action/osv-scanner-action@v2.7.0
         with:
           scan-args: |-
             --lockfile=pnpm-lock.yaml
             --format=json
             --output=osv-results.json
+
+      - name: Summarize the findings (report-only — this step never fails the job)
+        if: always()
+        run: |
+          if [ -f osv-results.json ]; then
+            node -e "
+              const r = require('./osv-results.json');
+              let n = 0; const lines = [];
+              for (const res of r.results || []) for (const p of res.packages || []) {
+                for (const v of p.vulnerabilities || []) { n++; lines.push('- ' + (p.package.name || '?') + ' ' + (p.package.version || '?') + ' — ' + v.id); }
+              }
+              console.log('VULNERABILITIES=' + n);
+              require('fs').appendFileSync(process.env.GITHUB_STEP_SUMMARY, '### OSV dependency scan (report-only)\n\n' + (n ? lines.join('\n') + '\n' : 'No known-vulnerable dependencies found.\n'));
+              if (n) console.log('::warning::OSV-Scanner found ' + n + ' known vulnerabilit(ies) in the dependency lockfile. Report-only for now — see the step summary and the osv-scan-results artifact.');
+            "
+          else
+            echo "### OSV dependency scan (report-only)" >> "$GITHUB_STEP_SUMMARY"
+            echo "The scan produced no report file (scan step outcome: ${{ steps.osv.outcome }}). Treat this as a scanner problem, not as a clean result." >> "$GITHUB_STEP_SUMMARY"
+            echo "::warning::OSV-Scanner produced no report file (scan step outcome: ${{ steps.osv.outcome }})."
+          fi
 
       - name: Keep the scan report
         if: always()
@@ -83,7 +108,6 @@ jobs:
   code-scan:
     name: Code scan — Semgrep (report-only)
     runs-on: ubuntu-latest
-    continue-on-error: true
     container:
       image: semgrep/semgrep:1.182.1
     steps:
@@ -94,8 +118,11 @@ jobs:
         run: |
           semgrep scan --config auto --json --output semgrep-results.json . || true
           if [ -f semgrep-results.json ]; then
-            COUNT="$(node -e "console.log((require('./semgrep-results.json').results || []).length)" 2>/dev/null || echo 'unknown number of')"
+            COUNT="$(python3 -c "import json; print(len(json.load(open('semgrep-results.json')).get('results', [])))" 2>/dev/null || echo 'an unknown number of')"
             echo "Semgrep finished: ${COUNT} finding(s). Report-only — see the semgrep-scan-results artifact." >> "$GITHUB_STEP_SUMMARY"
+            if [ "${COUNT}" != "0" ] && [ "${COUNT}" != "an unknown number of" ]; then
+              echo "::warning::Semgrep reported ${COUNT} finding(s). Report-only for now — see the semgrep-scan-results artifact."
+            fi
           fi
 
       - name: Keep the scan report
