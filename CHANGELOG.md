@@ -11,6 +11,36 @@ version heading below tracks the repository release.
 
 ### Added
 
+- Phase C1 (local track, draft — served acceptance pending the deploy
+  credential remedy): the read API and content MCP tools, built on a new
+  `@electrohire/platform` workspace package.
+  - Content mirror (C-01): API/MCP content is loaded from the website's
+    generated `/content/v1.json` — fees, entity facts, FAQs, pod
+    presentation (no pod pricing, exactly as on the site), UK Hub tiers,
+    and estimator parameters have no second copy in this repo.
+  - Read endpoints (C-02): `/v1/content`, `/v1/content/services`,
+    `/v1/faq`, `/v1/pricing`, and the three tool endpoints
+    (`/v1/tools/cost-estimator`, `/v1/tools/scoping-checklist`,
+    `/v1/tools/timeline-calculator`). No blog endpoint until Phase B data
+    exists. OpenAPI 3.1 at `/openapi.json`; estimate responses must carry
+    a range + assumptions (schema-enforced).
+  - MCP tools (C-03) mirroring C-02 over Streamable HTTP, including a real
+    `electrohire_site_search` over the mirrored content (the scaffold
+    placeholder is gone).
+  - Guards (C-05): per-IP in-Worker rate limits, metadata-only request
+    logging, per-tool and global kill switches, all drill-proven locally.
+  - C-15 layers 1/2/5/6: delimited labeled DATA structure for model
+    messages, input screening against a frozen injection corpus (flag +
+    log, never rewrite), output screening (leaked system content,
+    credential shapes, SG-3 confidence percentages), and an egress
+    allowlist (OpenRouter + the platform's own hosts) enforced in code.
+  - Python SDK 0.2.0 (C-06): read + tool methods, stdlib-only, with a test
+    suite that runs against the served API.
+  - API, MCP, platform, and Python SDK versions move to 0.2.0.
+
+
+### Added
+
 - `connectors/` — agent-platform connectors for Meta Muse, ChatGPT, Codex
   CLI, Claude Desktop, Claude Code, Ollama (via the ollmcp bridge), Cursor,
   Windsurf, VS Code + Copilot, Gemini CLI, and any MCP client: a guide plus a

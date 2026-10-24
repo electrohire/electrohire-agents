@@ -168,6 +168,9 @@ importers:
 
   apps/api:
     dependencies:
+      '@electrohire/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       '@hono/zod-openapi':
         specifier: ^1.6.3
         version: 1.6.3(hono@4.13.13)(zod@4.6.7)
@@ -190,6 +193,9 @@ importers:
 
   apps/mcp:
     dependencies:
+      '@electrohire/platform':
+        specifier: workspace:*
+        version: link:../../packages/platform
       '@modelcontextprotocol/sdk':
         specifier: ^1.32.1
         version: 1.32.1(supports-color@10.2.2)(zod@4.6.7)
@@ -206,6 +212,19 @@ importers:
       wrangler:
         specifier: ^4.152.0
         version: 4.152.0(@cloudflare/workers-types@5.20261023.1)
+
+  packages/platform:
+    dependencies:
+      zod:
+        specifier: ^4.6.7
+        version: 4.6.7
+    devDependencies:
+      '@cloudflare/workers-types':
+        specifier: ^5.20261023.1
+        version: 5.20261023.1
+      typescript:
+        specifier: ^7.0.2
+        version: 7.0.2
 
 packages:
 

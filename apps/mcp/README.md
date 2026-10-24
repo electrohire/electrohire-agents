@@ -11,6 +11,10 @@ tools directly.
   limits; action tools will act only under a user-granted authorization.
   See `../../docs/architecture.md`.
 
+## Phase C1 status (local track)
+
+Content tools mirror the C-02 REST endpoints over the same mirrored content via `@electrohire/platform`; C-15 layers 1/2/5/6 live in that package. No binding tools exist in C1. Proven locally (wrangler dev, two independent MCP client harnesses); NOT deployed — served acceptance waits for the Workers deploy credential remedy.
+
 ## Develop
 
 ```bash

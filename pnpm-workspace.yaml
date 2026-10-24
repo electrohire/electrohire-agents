@@ -1,5 +1,6 @@
 packages:
   - "apps/*"
+  - "packages/*"
 
 # Wrangler's toolchain binaries; required so `wrangler dev`/`deploy` work
 # from a fresh install (pnpm blocks dependency build scripts by default).
