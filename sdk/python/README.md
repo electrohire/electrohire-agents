@@ -4,8 +4,12 @@ Python client for the [ElectroHire](https://electrohire.com) API — the
 AI-powered electronics engineering marketplace. Built for agent developers
 working in Python; the API itself runs as TypeScript on Cloudflare Workers.
 
-> **Scaffold (0.1.0).** Only `health()` is implemented. The package is not yet
-> published to PyPI; install it from this repository.
+> **Phase C1 (0.2.0).** `health()`, the read endpoints (site content,
+> services, FAQ, pricing), and the three tool endpoints (cost estimator,
+> scoping checklist, timeline calculator) are implemented. The package is
+> not yet published to PyPI; install it from this repository. Its test
+> suite runs against a served API: `EH_API_URL=http://127.0.0.1:8787
+> python -m unittest discover -s sdk/python/tests`.
 
 ## Install
 

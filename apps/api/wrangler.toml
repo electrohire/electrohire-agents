@@ -4,3 +4,8 @@
 name = "electrohire-api"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
+
+[vars]
+# Content mirror source (C-01): the website build emits this document.
+# Local dev overrides with CONTENT_JSON via wrangler --var / .dev.vars.
+CONTENT_SOURCE_URL = "https://electrohire-website-staging.pages.dev/content/v1.json"

@@ -1,1 +1,22 @@
-{"dependencies":{"@hono/zod-openapi":"^1.6.3","hono":"^4.13.13","zod":"^4.6.7"},"devDependencies":{"@cloudflare/workers-types":"^5.20261023.1","typescript":"^7.0.2","wrangler":"^4.152.0"},"name":"@electrohire/api","private":true,"scripts":{"deploy":"wrangler deploy","dev":"wrangler dev","typecheck":"tsc --noEmit -p tsconfig.json"},"type":"module","version":"0.1.0"}
+{
+  "dependencies": {
+    "@hono/zod-openapi": "^1.6.3",
+    "hono": "^4.13.13",
+    "zod": "^4.6.7",
+    "@electrohire/platform": "workspace:*"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261023.1",
+    "typescript": "^7.0.2",
+    "wrangler": "^4.152.0"
+  },
+  "name": "@electrohire/api",
+  "private": true,
+  "scripts": {
+    "deploy": "wrangler deploy",
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit -p tsconfig.json"
+  },
+  "type": "module",
+  "version": "0.2.0"
+}
