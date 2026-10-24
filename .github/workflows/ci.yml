@@ -23,6 +23,24 @@ jobs:
       - name: Typecheck all workspace packages
         run: pnpm typecheck
 
+  parity:
+    name: Feature parity manifest is current
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Regenerate the parity manifest
+        run: node tools/parity-manifest.mjs
+      - name: Fail if the committed manifest is stale
+        run: |
+          if ! git diff --exit-code -- parity-manifest.json; then
+            echo "::error::parity-manifest.json is stale. Run 'node tools/parity-manifest.mjs' (or 'pnpm parity') and commit the regenerated manifest with your change."
+            exit 1
+          fi
+
   python-sdk:
     name: Python SDK smoke test
     runs-on: ubuntu-latest

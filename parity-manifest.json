@@ -1,0 +1,42 @@
+{
+  "version": 1,
+  "generatedBy": "tools/parity-manifest.mjs",
+  "regenerate": "node tools/parity-manifest.mjs",
+  "states": [
+    "exposed",
+    "not-exposed",
+    "pending"
+  ],
+  "surfaces": {
+    "api": [
+      {
+        "name": "GET /openapi.json",
+        "kind": "route",
+        "method": "GET",
+        "path": "/openapi.json",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Platform endpoint. Serves the OpenAPI 3.1 document generated from the API's route schemas; live in the scaffold."
+      },
+      {
+        "name": "GET /v1/health",
+        "kind": "route",
+        "method": "GET",
+        "path": "/v1/health",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Platform endpoint. Live in the scaffold; reports API status and the deployed component version."
+      }
+    ],
+    "mcp": [
+      {
+        "name": "electrohire_site_search",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "pending",
+        "reason": "Placeholder implementation only: returns an empty, clearly marked result. Real site search lands with the spec 004 (agent-first access) implementation in the website program."
+      }
+    ]
+  },
+  "missingFromCode": []
+}

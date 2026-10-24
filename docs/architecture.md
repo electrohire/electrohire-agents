@@ -100,6 +100,30 @@ be the first thing that justifies a paid Workers plan.
   from a client success signal.
 - See [SECURITY.md](../SECURITY.md) for reporting a vulnerability.
 
+## AI provider policy
+
+**Settled, owner-directed 2026-10-23.** Any AI feature in this repository's
+components — the API, the MCP server, and anything built on them — makes its
+model calls through the **OpenRouter API** only. There are no direct integrations
+with any model provider (no OpenAI, Anthropic, Google, or other provider
+accounts or keys) in these components. One gateway, one bill, one
+key-management point; OpenRouter keys live only as server-side secrets (Worker
+secrets), never in client code.
+
+- **SDKs never embed provider keys** and never call a model provider directly;
+  they call this API, which calls OpenRouter.
+- **Example code uses OpenRouter endpoints only** — no provider-specific
+  endpoints or SDKs in examples, skills, or docs.
+- **Open-weight models served through OpenRouter are the preferred class**
+  (program direction, 2026-09-16).
+
+**Open item (unanswered, do not assume):** whether OpenAI-family models reached
+*through* OpenRouter are in or out of scope awaits the owner's confirmation.
+The policy governs the access route (the gateway); nothing in this repository
+should silently assume either answer to the model-family question. The full
+policy lives in the private website repo (`docs/AI-PROVIDER-POLICY.md` in
+electrohire-website-beta).
+
 ## Connectors (client-side guides)
 
 `connectors/` holds per-platform guides and config examples that teach a user's own agent — on Muse, ChatGPT, Codex, Claude, Ollama (via a bridge client), Cursor, Windsurf, VS Code Copilot, Gemini CLI, or any MCP client — how to reach the MCP server above with a personal MCP API key created in the user's ElectroHire dashboard. See [`docs/connectors.md`](connectors.md) for the index and the shared concepts (keys, scopes, testing, revocation).

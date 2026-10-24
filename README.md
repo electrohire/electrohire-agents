@@ -61,6 +61,16 @@ client = ElectroHireClient()               # defaults to https://api.electrohire
 print(client.health())                     # -> {"status": "ok", "version": "0.1.0"}
 ```
 
+## Feature parity
+
+The API and MCP server stay in step with the ElectroHire website and platform
+by rule, not by cleanup pass: every feature added, changed, or removed carries
+an API/MCP parity assessment in the same change, recorded in
+[`parity-manifest.json`](parity-manifest.json) — the checked-in source of truth,
+kept current by a CI drift check. The discipline, the parity states, and the
+deprecate-before-removal rule are in
+[`docs/FEATURE-PARITY.md`](docs/FEATURE-PARITY.md).
+
 ## Versioning
 
 Every component is semantically versioned on its own. The API is additionally
