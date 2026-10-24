@@ -11,6 +11,14 @@ version heading below tracks the repository release.
 
 ### Added
 
+- `connectors/` — agent-platform connectors for Meta Muse, ChatGPT, Codex
+  CLI, Claude Desktop, Claude Code, Ollama (via the ollmcp bridge), Cursor,
+  Windsurf, VS Code + Copilot, Gemini CLI, and any MCP client: a guide plus a
+  copy-ready config example per platform, a machine-readable
+  `connectors/registry.json`, a dependency-free validator
+  (`tools/validate-connectors.mjs`, wired into CI), and the
+  `docs/connectors.md` index covering dashboard MCP API keys, scopes,
+  testing, and revocation.
 - Feature-parity discipline ([docs/FEATURE-PARITY.md](docs/FEATURE-PARITY.md)):
   every feature added, changed, or removed in the ElectroHire website or
   platform carries an API/MCP parity assessment in the same change, with each

@@ -19,6 +19,7 @@ one) needs to interact with ElectroHire programmatically.
 | MCP server | [`apps/mcp`](apps/mcp) | 0.1.0 | Remote MCP server on a Cloudflare Worker, using the official `@modelcontextprotocol/sdk`. |
 | Agent skills | [`skills/`](skills) | per-skill `VERSION` file | SKILL.md packages that teach an agent how to use ElectroHire well. |
 | Python SDK | [`sdk/python`](sdk/python) | 0.1.0 | Python client package (`electrohire` on PyPI when published) for agent developers. |
+| Connectors | [`connectors/`](connectors) | 0.1.0 | Per-platform guides + copy-ready config examples for connecting your own agent (Muse, ChatGPT, Codex, Claude, Ollama, Cursor, Windsurf, VS Code Copilot, Gemini CLI, any MCP client) with a personal MCP API key from your ElectroHire dashboard. Index: [`docs/connectors.md`](docs/connectors.md). |
 
 Runtimes are TypeScript on Cloudflare Workers (free-tier-first). Python exists as an
 SDK for agent developers — see [`docs/architecture.md`](docs/architecture.md) for the

@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "electrohire": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "mcp-remote",
+        "https://mcp.electrohire.com/mcp",
+        "--header",
+        "Authorization:${AUTH_HEADER}"
+      ],
+      "env": {
+        "AUTH_HEADER": "Bearer eh_live_REPLACE_ME"
+      }
+    }
+  }
+}

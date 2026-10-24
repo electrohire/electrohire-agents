@@ -1,0 +1,3 @@
+[mcp_servers.electrohire]
+url = "https://mcp.electrohire.com/mcp"
+bearer_token_env_var = "ELECTROHIRE_API_KEY"

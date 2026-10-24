@@ -123,3 +123,9 @@ The policy governs the access route (the gateway); nothing in this repository
 should silently assume either answer to the model-family question. The full
 policy lives in the private website repo (`docs/AI-PROVIDER-POLICY.md` in
 electrohire-website-beta).
+
+## Connectors (client-side guides)
+
+`connectors/` holds per-platform guides and config examples that teach a user's own agent — on Muse, ChatGPT, Codex, Claude, Ollama (via a bridge client), Cursor, Windsurf, VS Code Copilot, Gemini CLI, or any MCP client — how to reach the MCP server above with a personal MCP API key created in the user's ElectroHire dashboard. See [`docs/connectors.md`](connectors.md) for the index and the shared concepts (keys, scopes, testing, revocation).
+
+These are client-side guides only — they add no provider integration to the platform, so the OpenRouter-only AI provider policy for ElectroHire's own AI is unaffected.

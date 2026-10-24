@@ -1,0 +1,10 @@
+{
+  "name": "electrohire",
+  "mcp_server_url": "https://mcp.electrohire.com/mcp",
+  "transport": "streamable-http",
+  "authentication": "OAuth 2.1 where the client supports it; otherwise a dashboard MCP API key as a Bearer token",
+  "custom_gpt_action": {
+    "openapi_url": "https://api.electrohire.com/openapi.json",
+    "authentication": "Bearer ${ELECTROHIRE_API_KEY}"
+  }
+}
