@@ -11,6 +11,38 @@ version heading below tracks the repository release.
 
 ### Added
 
+- Phase C3 (local track, draft — served acceptance pending the deploy
+  credential remedy): OAuth 2.1 action tools.
+  - OAuth 2.1 authorization server flow (`@electrohire/platform` oauth
+    module): authorization code + PKCE (S256 only), authorization-server
+    metadata (RFC 8414), protected-resource metadata (RFC 9728, served by
+    both Workers), and audience-bound access tokens (RFC 8707) — a token
+    minted for one resource is refused at the other, in the SAME shared
+    gate as personal API keys (C-10 completion; keys and real OAuth
+    tokens are refused/admitted identically, cross-method matrix tested
+    with real tokens). Tokens travel in headers only; a token in a URL is
+    rejected exactly like a key.
+  - First action tools only: `electrohire_newsletter_subscribe` /
+    `POST /v1/actions/newsletter-subscribe` (double opt-in fully intact —
+    pending until the confirmation click; responses never reveal
+    subscription state) and `electrohire_support_ticket` /
+    `POST /v1/actions/support-ticket` (same inbox shape as the site form).
+    Action tools require a credential; the scope check runs in MCP
+    dispatch before execution (C-15 layer 3), and the OAuth consent step
+    is the human confirmation choke point (layer 4) — injected content
+    in a ticket body or subscribe payload is screened, logged, and
+    stored as data, never executed (frozen corpus extended to the action
+    tools).
+  - Ellie actions are NOT built and NOT offered: Phase E is gated (no
+    builder named). No Ellie tool, route, or OAuth scope exists.
+  - The eleven connect guides updated in the same change for the OAuth
+    flow and action tools (C-14); parity manifest regenerated (13 API
+    routes, 9 MCP tools) with the drift check green.
+  - Platform, API and MCP versions move to 0.4.0.
+
+
+### Added
+
 - Phase C2 (local track, draft — served acceptance pending the deploy
   credential remedy): personal API keys made real on the enforcement side.
   - Shared authorization gate (`@electrohire/platform` apikeys module):

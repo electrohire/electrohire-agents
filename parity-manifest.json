@@ -10,6 +10,15 @@
   "surfaces": {
     "api": [
       {
+        "name": "GET /.well-known/oauth-protected-resource",
+        "kind": "route",
+        "method": "GET",
+        "path": "/.well-known/oauth-protected-resource",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase C3: RFC 9728 protected-resource metadata for the resource (audience-bound OAuth tokens, bearer in header only). Local track build; served acceptance pending the deploy credential remedy."
+      },
+      {
         "name": "GET /llms.txt",
         "kind": "route",
         "method": "GET",
@@ -73,6 +82,24 @@
         "reason": "Phase C1: fees, pod presentation (no pod price — deliberately absent, as on the site), UK Hub tiers; all mirrored content."
       },
       {
+        "name": "POST /v1/actions/newsletter-subscribe",
+        "kind": "route",
+        "method": "POST",
+        "path": "/v1/actions/newsletter-subscribe",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase C3 (C-13): OAuth action — newsletter subscribe with double opt-in fully intact (pending until the confirmation click; neutral responses). Credential required, same gate as API keys, audience-bound."
+      },
+      {
+        "name": "POST /v1/actions/support-ticket",
+        "kind": "route",
+        "method": "POST",
+        "path": "/v1/actions/support-ticket",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase C3 (C-13): OAuth action — support-ticket creation matching the site form's behavior (B-05), filing into the same inbox shape. Credential required, same gate as API keys, audience-bound."
+      },
+      {
         "name": "POST /v1/tools/cost-estimator",
         "kind": "route",
         "method": "POST",
@@ -130,6 +157,13 @@
         "reason": "Phase C1 MCP mirror of GET /v1/content (mirrored website content). Local track; served acceptance pending the deploy remedy."
       },
       {
+        "name": "electrohire_newsletter_subscribe",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase C3 (C-13): MCP action tool mirroring the REST subscribe action; scope checked in dispatch before execution (C-15 layer 3); credential required."
+      },
+      {
         "name": "electrohire_scoping_checklist",
         "kind": "tool",
         "file": "apps/mcp/src/index.ts",
@@ -142,6 +176,13 @@
         "file": "apps/mcp/src/index.ts",
         "state": "exposed",
         "reason": "Phase C1: placeholder replaced — searches the mirrored FAQ, categories, and pod presentation and returns real content."
+      },
+      {
+        "name": "electrohire_support_ticket",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase C3 (C-13): MCP action tool mirroring the REST ticket action; scope checked in dispatch before execution (C-15 layer 3); credential required."
       },
       {
         "name": "electrohire_timeline_calculator",

@@ -50,6 +50,18 @@ Expected result: the agent calls the read-only `electrohire_site_search` tool an
 - **Server not found / connection refused** — check the URL is exactly `https://mcp.electrohire.com/mcp` and that you are online. Remember these are planned beta endpoints, not yet live production.
 - **Tools do not appear** — restart the client after editing its config; most clients only read MCP config at startup.
 
+## Acting on ElectroHire's behalf of a user — OAuth 2.1 (action tools)
+
+Read tools work with the API key above. **Action tools** — subscribing an address to the newsletter (`electrohire_newsletter_subscribe`) and opening a support ticket (`electrohire_support_ticket`) — use **OAuth 2.1 delegated authorization** instead of a personal key:
+
+1. Your client opens ElectroHire's authorization endpoint and sends the user there. The flow is **authorization code + PKCE (S256)** — no other grant, no plain PKCE.
+2. The user sees ElectroHire's **consent screen** (a human form protected by Cloudflare Turnstile) naming your client and the exact scopes. Nothing is granted until the user approves there — an agent cannot approve on the user's behalf.
+3. The token you receive is **audience-bound** (RFC 8707): a token minted for the API resource will not work at the MCP resource, or the other way round. Send tokens in the `Authorization: Bearer <token>` header only — a token in a URL is rejected, exactly like a key.
+4. Two honesty rules are built in and cannot be configured away: a newsletter subscribe stays **pending until the person clicks the confirmation email link** (double opt-in), and the subscribe response never reveals whether an address was already subscribed. A support ticket filed this way lands in the same inbox, with the same fields, as one filed on the website.
+5. Tokens last one hour. Revoking a token (the user, in their dashboard) takes effect on the very next request. Discovery: authorization-server metadata (RFC 8414) on the authorization host, protected-resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource` on each resource.
+
+Ellie session/analysis actions are **not offered** — they arrive only when the Ellie backend exists behind them, and no guide or client should promise them before then.
+
 ## Revoke or rotate the key
 
 1. In your ElectroHire dashboard, open **API Keys** (the MCP API keys page) in the dashboard sidebar.

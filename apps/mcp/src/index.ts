@@ -6,6 +6,7 @@ import {
   RateLimiter, globalKillOn, disabledTools, logRequest, identityLabel,
   screenInput, screenOutput, LocalAuditSink,
   extractCredential, authorizeCredential, storeFromEnv, scopeForMcpTool,
+  protectedResourceMetadata, RESOURCES, MCP_ACTION_TOOLS, createActionStore,
   type ContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
@@ -19,10 +20,13 @@ import {
  *
  * Keep MCP_SERVER_VERSION in sync with this package's package.json version.
  */
-const MCP_SERVER_VERSION = "0.3.0";
+const MCP_SERVER_VERSION = "0.4.0";
 
 type Env = ContentEnv & GuardEnv & KeysEnv;
-type Cred = { kind: "api_key"; secret: string } | { kind: "oauth_double"; token: string } | null;
+type Cred = { kind: "api_key"; secret: string } | { kind: "oauth_double"; token: string } | { kind: "oauth_token"; token: string } | null;
+const AUTH_ISSUER = "https://auth-beta.electrohire.com";
+/** C-13 action store (LOCAL stand-in mirroring the website data layer). */
+const actionStore = createActionStore();
 const audit = new LocalAuditSink(); // INTERIM — A-08 wiring in @electrohire/platform guard.ts
 const limiters = new Map<string, RateLimiter>();
 const limiterFor = (env: Env) => {
@@ -56,12 +60,20 @@ async function guarded(env: Env, name: string, args: unknown, run: () => Promise
   // test-double) is scope-checked in the dispatch path, before the tool
   // handler runs — the same shared gate the REST API passes. No credential
   // keeps C1's public-read behavior.
+  // C-15 layer 3 (Phase C3, real): action tools REQUIRE a credential and
+  // the scope check runs here, in dispatch, BEFORE the tool handler — a
+  // refused call never executes. OAuth tokens also pass the audience check
+  // for THIS resource in the same shared gate (C-10 completion).
+  if (MCP_ACTION_TOOLS.has(name) && !cred) {
+    return { content: [{ type: "text" as const, text: JSON.stringify({ error: "credential_required", detail: "Action tools require an OAuth token or API key in the Authorization header holding the action scope. Protected-resource metadata: /.well-known/oauth-protected-resource (RFC 9728)." }) }], isError: true };
+  }
   if (cred) {
     const store = await storeFromEnv(env);
-    const gate = await authorizeCredential(store, cred, { scope: scopeForMcpTool(name) });
+    const gate = await authorizeCredential(store, cred, { scope: scopeForMcpTool(name), audience: RESOURCES.mcp });
     if (!gate.allowed) {
       return { content: [{ type: "text" as const, text: JSON.stringify({ error: "scope_refused", detail: gate.reason }) }], isError: true };
     }
+    (globalThis as any).__ehGate = gate;
   }
   const probe = JSON.stringify(args ?? {});
   const s = screenInput(probe);
@@ -148,6 +160,36 @@ function createServer(env: Env, cred: Cred = null): McpServer {
     inputSchema: { needs: z.array(z.string()).min(1), stage: z.string().optional() },
   }, async (args) => g("electrohire_timeline_calculator", args, async () => timelineCalculator(await loadContent(env), args)));
 
+  server.registerTool("electrohire_newsletter_subscribe", {
+    title: "Subscribe to the newsletter",
+    description: "Subscribe an email address to the ElectroHire newsletter (action — requires the action:newsletter_subscribe scope). Double opt-in stays fully intact: the address is pending until the person clicks the confirmation email link, and the response never reveals whether the address was already subscribed.",
+    inputSchema: { email: z.string().describe("Email address to subscribe.") },
+  }, async (args) => g("electrohire_newsletter_subscribe", args, async () => {
+    const gate = (globalThis as any).__ehGate;
+    void gate;
+    const r = actionStore.subscribe({ email: String((args as { email: string }).email ?? ""), source: "mcp-oauth" });
+    // The confirmation token travels ONLY in the confirmation email.
+    return r.response;
+  }));
+
+  server.registerTool("electrohire_support_ticket", {
+    title: "Open a support ticket",
+    description: "File a support ticket into the same inbox, with the same fields, as the site contact form (action — requires the action:support_ticket scope). The requester is the token's owner; payload text is stored as data, never executed.",
+    inputSchema: { subject: z.string(), body: z.string(), context: z.string().optional(), isDataRequest: z.boolean().optional() },
+  }, async (args) => g("electrohire_support_ticket", args, async () => {
+    const gate = (globalThis as any).__ehGate;
+    const a = args as { subject: string; body: string; context?: string; isDataRequest?: boolean };
+    const t = actionStore.createTicket({
+      requesterName: gate?.accountId ?? "oauth-user", requesterEmail: gate?.accountId ?? "oauth-user",
+      subject: String(a.subject ?? ""), body: String(a.body ?? ""), context: String(a.context ?? ""),
+      isDataRequest: !!a.isDataRequest, sourceRoute: "api-oauth",
+    });
+    return { id: t.id, status: t.status, subject: t.subject };
+  }));
+
+  // NOTE (Phase E gated): no Ellie tool is registered. Ellie session /
+  // analysis actions ship only when Phase E's backend exists (C-13/E-06).
+
   return server;
 }
 
@@ -155,6 +197,7 @@ export default {
   async fetch(request: Request, env: Env): Promise<Response> {
     const url = new URL(request.url);
     if (url.pathname === "/health") return Response.json({ status: "ok", version: MCP_SERVER_VERSION });
+    if (url.pathname === "/.well-known/oauth-protected-resource") return Response.json(protectedResourceMetadata(RESOURCES.mcp, AUTH_ISSUER));
     if (url.pathname !== "/mcp") return new Response("Not found", { status: 404 });
     const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() || "local";
     const identity = await identityLabel(request);
@@ -171,9 +214,9 @@ export default {
     const extracted = extractCredential({ headers: { authorization: request.headers.get("authorization") ?? undefined }, url: request.url });
     if (extracted.error) {
       logRequest({ identity: "credential-in-url", endpoint: "/mcp", status: 400 });
-      return Response.json({ error: "credential_in_url", detail: "API keys are accepted in headers only — a key in a URL is rejected." }, { status: 400 });
+      return Response.json({ error: "credential_in_url", detail: "Credentials are accepted in headers only — a key or token in a URL is rejected." }, { status: 400 });
     }
-    const cred: Cred = extracted.secret ? { kind: "api_key", secret: extracted.secret } : extracted.token ? { kind: "oauth_double", token: extracted.token } : null;
+    const cred: Cred = extracted.secret ? { kind: "api_key", secret: extracted.secret } : extracted.oauthToken ? { kind: "oauth_token", token: extracted.oauthToken } : extracted.token ? { kind: "oauth_double", token: extracted.token } : null;
     const server = createServer(env, cred);
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined });
     await server.connect(transport);
