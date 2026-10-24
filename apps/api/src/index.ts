@@ -4,6 +4,7 @@ import {
   EstimateResponse, RateLimiter, globalKillOn, disabledTools, logRequest,
   identityLabel, screenInput, screenOutput, LocalAuditSink,
   extractCredential, authorizeCredential, storeFromEnv, scopeForApiPath,
+  protectedResourceMetadata, RESOURCES, scopeForApiAction, createActionStore,
   type ContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
@@ -19,9 +20,13 @@ import {
  *
  * Keep API_VERSION in sync with this package's package.json version.
  */
-const API_VERSION = "0.3.0";
+const API_VERSION = "0.4.0";
 
 type Env = ContentEnv & GuardEnv & KeysEnv;
+const AUTH_ISSUER = "https://auth-beta.electrohire.com";
+/** C-13 action store (LOCAL stand-in for the website data layer's B-02/B-05
+ * records + D-04 double opt-in — same behavior, in-memory home). */
+const actionStore = createActionStore();
 const app = new OpenAPIHono<{ Bindings: Env }>();
 const limiter = new Map<string, RateLimiter>();
 const audit = new LocalAuditSink(); // INTERIM sink — A-08 substrate wiring is in @electrohire/platform (guard.ts)
@@ -56,14 +61,28 @@ app.use("*", async (c, next) => {
   const extracted = extractCredential({ headers: { authorization: c.req.header("authorization") }, url: c.req.url });
   if (extracted.error) {
     logRequest({ identity: "credential-in-url", endpoint: c.req.path, status: 400 });
-    return c.json({ error: "credential_in_url", detail: "API keys are accepted in headers only — a key in a URL is rejected." }, 400);
+    return c.json({ error: "credential_in_url", detail: "Credentials are accepted in headers only — a key or token in a URL is rejected." }, 400);
   }
-  const presented = extracted.secret ?? extracted.token;
+  const presented = extracted.secret ?? extracted.token ?? extracted.oauthToken;
+  const credArg = extracted.secret ? { kind: "api_key", secret: extracted.secret }
+    : extracted.oauthToken ? { kind: "oauth_token", token: extracted.oauthToken }
+    : { kind: "oauth_double", token: extracted.token };
+  // C-13/C-10 completion: EVERY scoped route passes the one shared gate —
+  // read routes (when a credential is presented) and action routes (a
+  // credential is REQUIRED; binding actions are never anonymous). The gate
+  // call always names this resource as the audience, so an OAuth token
+  // minted for another resource is refused here (RFC 8707).
+  const actionScope = scopeForApiAction(c.req.path);
+  if (actionScope && !presented) {
+    logRequest({ identity: "anonymous", endpoint: c.req.path, status: 401 });
+    c.header("WWW-Authenticate", `Bearer resource_metadata="${AUTH_ISSUER}/.well-known/oauth-protected-resource"`);
+    return c.json({ error: "credential_required", detail: "Action endpoints require an OAuth token or API key in the Authorization header, holding the action scope. See the protected-resource metadata (RFC 9728)." }, 401);
+  }
   if (presented) {
-    const scope = scopeForApiPath(c.req.path);
+    const scope = actionScope ?? scopeForApiPath(c.req.path);
     if (scope) {
       const store = await storeFromEnv(env);
-      const gate = await authorizeCredential(store, extracted.secret ? { kind: "api_key", secret: extracted.secret } : { kind: "oauth_double", token: extracted.token }, { scope });
+      const gate = await authorizeCredential(store, credArg, { scope, audience: RESOURCES.api });
       if (!gate.allowed) {
         const status = /quota|rate limit/i.test(gate.reason) ? 429 : /unknown|revoked|expired/i.test(gate.reason) ? 401 : 403;
         const slug = status === 429 ? "quota_exceeded" : status === 401 ? "credential_refused" : "scope_refused";
@@ -71,6 +90,7 @@ app.use("*", async (c, next) => {
         return c.json({ error: slug, detail: gate.reason }, status as never);
       }
       (c as any).set("keyUsage", gate.usageCount);
+      (c as any).set("gate", gate);
     }
   }
   // Input screening (layer 2): flag + log + raise scrutiny; never rewrite.
@@ -196,6 +216,47 @@ app.openapi(createRoute({ method: "post", path: "/v1/tools/timeline-calculator",
     try { return c.json(timelineCalculator(doc, await c.req.json()), 200); }
     catch (e: any) { return c.json({ error: "invalid_input", detail: String(e?.message ?? e) }, 400); }
   });
+
+// RFC 9728 protected-resource metadata for this API resource (C-13).
+app.get("/.well-known/oauth-protected-resource", (c) => c.json(protectedResourceMetadata(RESOURCES.api, AUTH_ISSUER)));
+
+const SubscribeBody = z.object({ email: z.string() }).openapi("NewsletterSubscribeRequest");
+const SubscribeResponse = z.object({ ok: z.boolean(), status: z.string(), message: z.string() }).openapi("NewsletterSubscribeResponse");
+app.openapi(createRoute({ method: "post", path: "/v1/actions/newsletter-subscribe", tags: ["Actions"], summary: "Newsletter subscribe (OAuth action) — double opt-in: the address stays pending until the person clicks the confirmation email link; the response never reveals whether the address was already subscribed",
+  request: { body: { content: { "application/json": { schema: SubscribeBody } }, required: true } },
+  responses: { 200: json(SubscribeResponse, "Neutral subscribe response."), 401: err("Credential required or refused."), 403: err("Scope or audience refused.") } }),
+  async (c) => {
+    const gate = (c as any).get("gate");
+    const body = await c.req.json();
+    // C-15 layer 2 already screened + logged this payload in middleware;
+    // the address is stored as DATA by the action store, never executed.
+    const r = actionStore.subscribe({ email: String(body.email ?? ""), source: "api-oauth" });
+    // The confirmation token travels ONLY in the confirmation email
+    // (D-04) — it is never returned to the calling agent.
+    void gate;
+    return c.json(r.response, 200);
+  });
+
+const TicketBody = z.object({ subject: z.string(), body: z.string(), context: z.string().optional(), isDataRequest: z.boolean().optional() }).openapi("SupportTicketRequest");
+const TicketResponse = z.object({ id: z.string(), status: z.string(), subject: z.string() }).openapi("SupportTicketResponse");
+app.openapi(createRoute({ method: "post", path: "/v1/actions/support-ticket", tags: ["Actions"], summary: "Open a support ticket (OAuth action) — files into the same inbox, with the same fields, as the site contact form (B-05); the requester is the token's owner",
+  request: { body: { content: { "application/json": { schema: TicketBody } }, required: true } },
+  responses: { 200: json(TicketResponse, "The filed ticket."), 401: err("Credential required or refused."), 403: err("Scope or audience refused.") } }),
+  async (c) => {
+    const gate = (c as any).get("gate");
+    const body = await c.req.json();
+    const t = actionStore.createTicket({
+      requesterName: gate?.accountId ?? "oauth-user", requesterEmail: gate?.accountId ?? "oauth-user",
+      subject: String(body.subject ?? ""), body: String(body.body ?? ""), context: String(body.context ?? ""),
+      isDataRequest: !!body.isDataRequest, sourceRoute: "api-oauth",
+    });
+    return c.json({ id: t.id, status: t.status, subject: t.subject }, 200);
+  });
+
+// NOTE (Phase E gated): no Ellie action route exists. Ellie session /
+// analysis actions ship only when Phase E's backend exists behind them
+// and Tristen names its builder (plan C-13 / E-06). Nothing here offers
+// or promises them.
 
 // NOTE (C-02): no /v1/blog route is registered. Blog data does not exist
 // until Phase B (B-03); an absent endpoint is honest, a fake empty one is not.

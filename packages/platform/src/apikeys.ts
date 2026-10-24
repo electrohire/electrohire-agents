@@ -37,9 +37,22 @@ export function scopeForApiPath(path: string): string | null {
 }
 /** Scope a credential must hold for an MCP tool (C-10 wiring). */
 export function scopeForMcpTool(name: string): string {
+  // C-15 layer 3 (Phase C3): action tools map to their action scopes, so the
+  // MCP dispatch check refuses a wrongly-scoped credential before execution.
+  if (name === "electrohire_newsletter_subscribe") return "action:newsletter_subscribe";
+  if (name === "electrohire_support_ticket") return "action:support_ticket";
   if (["electrohire_estimate_cost", "electrohire_scoping_checklist", "electrohire_timeline_calculator"].includes(name)) return "read:tools";
   return "read:content";
 }
+/** Scope a credential must hold for a REST action route (Phase C3, C-13). */
+export function scopeForApiAction(path: string): string | null {
+  if (path === "/v1/actions/newsletter-subscribe") return "action:newsletter_subscribe";
+  if (path === "/v1/actions/support-ticket") return "action:support_ticket";
+  return null;
+}
+/** The MCP action tools (Phase C3): binding actions — a credential is
+ * REQUIRED (C-15 layers 3+4); there is no anonymous action call. */
+export const MCP_ACTION_TOOLS = new Set(["electrohire_newsletter_subscribe", "electrohire_support_ticket"]);
 
 /* ---- C-12 / CMP-10: the AI provider policy as data (same table as the
  * dashboard package — OpenRouter only, data_collection pinned to deny,
@@ -75,7 +88,8 @@ function mintSecret(): string {
 }
 
 export interface CredentialRecord {
-  id: string; kind: "api_key" | "oauth_double"; creatorId: string; name: string;
+  id: string; kind: "api_key" | "oauth_double" | "oauth"; creatorId: string; name: string;
+  audience: string | null; // RFC 8707 resource the credential was minted for (OAuth tokens only; keys/doubles are null)
   display: string; secretHash: string; scopes: string[];
   teamId: string | null; projectId: string | null; projectCuiFlagged: boolean;
   expiresAt: number | null; revokedAt: number | null; createdAt: number;
@@ -88,6 +102,8 @@ export interface AuditSinkLike { append(ev: Record<string, unknown>): Promise<vo
 export interface KeyStore {
   mint(input: { creatorId: string; name: string; scopes: string[]; teamId?: string | null; projectId?: string | null; projectCuiFlagged?: boolean; expiresAt?: number | null; quotaPerDay?: number; secret?: string; revoked?: boolean }): Promise<{ record: CredentialRecord; secret: string }>;
   registerOAuthDouble(input: { accountId: string; scopes: string[]; teamId?: string | null; projectId?: string | null; projectCuiFlagged?: boolean; expiresAt?: number | null }): Promise<{ token: string; id: string }>;
+  registerOAuthToken(input: { accountId: string; scopes: string[]; audience: string; teamId?: string | null; projectId?: string | null; expiresAt?: number | null; token?: string }): Promise<{ token: string; id: string }>;
+  seedOAuthFromJson(json: string): Promise<void>;
   revoke(id: string): Promise<void>;
   dump(): CredentialRecord[];
   requestLog(): RequestMeta[];
@@ -108,16 +124,16 @@ export function createKeyStore(opts: { quotaPerDay?: number; ratePerMinute?: num
     if (auditSink) await auditSink.append({ eventType: "api_key", action, actorAccountId: r.creatorId, surface: "api", detail: { keyId: r.id, display: r.display, name: r.name, scopes: r.scopes } });
   };
 
-  async function add(kind: "api_key" | "oauth_double", input: { creatorId: string; name: string; scopes: string[]; teamId?: string | null; projectId?: string | null; projectCuiFlagged?: boolean; expiresAt?: number | null; quotaPerDay?: number; secret?: string; revoked?: boolean }) {
-    const secret = input.secret ?? (kind === "api_key" ? mintSecret() : "eho_test_" + mintSecret().slice("ehk_live_".length));
+  async function add(kind: "api_key" | "oauth_double" | "oauth", input: { creatorId: string; name: string; scopes: string[]; teamId?: string | null; projectId?: string | null; projectCuiFlagged?: boolean; expiresAt?: number | null; quotaPerDay?: number; secret?: string; revoked?: boolean; audience?: string | null }) {
+    const secret = input.secret ?? (kind === "api_key" ? mintSecret() : kind === "oauth" ? "eho_live_" + mintSecret().slice("ehk_live_".length) : "eho_test_" + mintSecret().slice("ehk_live_".length));
     const t = now();
     const rec: CredentialRecord = {
       id: crypto.randomUUID(), kind, creatorId: input.creatorId, name: input.name,
-      display: kind === "api_key" ? `ehk_live_…${secret.slice(-4)}` : "oauth_double",
+      display: kind === "api_key" ? `ehk_live_…${secret.slice(-4)}` : kind === "oauth" ? `eho_live_…${secret.slice(-4)}` : "oauth_double",
       secretHash: await sha256Hex(secret), scopes: [...input.scopes],
       teamId: input.teamId ?? null, projectId: input.projectId ?? null,
       projectCuiFlagged: !!input.projectCuiFlagged, expiresAt: input.expiresAt ?? null,
-      revokedAt: input.revoked ? t : null, createdAt: t,
+      revokedAt: input.revoked ? t : null, createdAt: t, audience: input.audience ?? null,
       quotaPerDay: input.quotaPerDay ?? defaultQuota, usageCount: 0, usageDay: dayKey(t),
       rateWindowStart: t, rateWindowCount: 0, lastUsedAt: null,
     };
@@ -131,6 +147,21 @@ export function createKeyStore(opts: { quotaPerDay?: number; ratePerMinute?: num
     async registerOAuthDouble(input) {
       const { record, secret } = await add("oauth_double", { creatorId: input.accountId, name: "oauth_double", scopes: input.scopes, teamId: input.teamId, projectId: input.projectId, projectCuiFlagged: input.projectCuiFlagged, expiresAt: input.expiresAt });
       return { token: secret, id: record.id };
+    },
+    async registerOAuthToken(input) {
+      const { record, secret } = await add("oauth", { creatorId: input.accountId, name: "oauth_token", scopes: input.scopes, teamId: input.teamId, projectId: input.projectId, expiresAt: input.expiresAt, audience: input.audience, secret: input.token });
+      return { token: secret, id: record.id };
+    },
+    async seedOAuthFromJson(json: string) {
+      const entries = JSON.parse(json) as Array<Record<string, unknown>>;
+      for (const e of entries) {
+        await add("oauth", {
+          creatorId: String(e.accountId ?? "local-seed"), name: "oauth_token",
+          scopes: (e.scopes as string[]) ?? [], audience: String(e.audience ?? ""),
+          expiresAt: (e.expiresAt as number) ?? null, revoked: !!e.revoked,
+          secret: typeof e.token === "string" ? e.token : undefined,
+        });
+      }
     },
     async revoke(id) {
       const rec = records.find((r) => r.id === id);
@@ -168,10 +199,11 @@ async function resolve(store: KeyStore, cred: { kind: string; secret?: string; t
   if (!rec || !timingSafeEqual(rec.secretHash, hash)) return null;
   if (cred.kind === "api_key" && rec.kind !== "api_key") return null;
   if (cred.kind === "oauth_double" && rec.kind !== "oauth_double") return null;
+  if (cred.kind === "oauth_token" && rec.kind !== "oauth") return null;
   return rec;
 }
 
-export interface GateRequirement { scope: string; teamId?: string; projectId?: string; endpointId?: string }
+export interface GateRequirement { scope: string; teamId?: string; projectId?: string; endpointId?: string; audience?: string }
 export interface GateResult { allowed: boolean; reason: string; keyId?: string; accountId?: string; kind?: string; usageCount?: number }
 
 /** THE shared authorization gate (C-10): keys and OAuth tokens pass the
@@ -188,6 +220,13 @@ export async function authorizeCredential(store: KeyStore, cred: { kind: string;
   if (rec.revokedAt) return deny("Credential revoked — revocation takes effect on the very next request.");
   if (rec.expiresAt !== null && t > rec.expiresAt) return deny("Credential expired.");
   if (!rec.scopes.includes(req.scope)) return deny(`Scope refused: this credential does not hold ${req.scope}. Read and action scopes are separate grants.`);
+  // Audience binding (RFC 8707, C-13/C-10 completion): an OAuth token is
+  // minted for ONE resource and is refused at any other. The token path
+  // lands in this same gate — API and MCP handlers always name their
+  // resource, so a scoped route cannot be added without the audience check.
+  if (rec.kind === "oauth" && req.audience && rec.audience !== req.audience) {
+    return deny(`Audience refused: this token was minted for ${rec.audience ?? "another resource"}, not for ${req.audience}. Tokens are bound to one resource (RFC 8707).`);
+  }
   if (rec.teamId && req.teamId && req.teamId !== rec.teamId) return deny("Binding refused: this credential is bound to a different team.");
   if (rec.projectId && req.projectId && req.projectId !== rec.projectId) return deny("Binding refused: this credential is bound to a different project.");
   if (req.scope.startsWith("action:") && rec.teamId && !req.teamId && !req.projectId) return deny("Binding refused: a bound credential must name its team or project for an action.");
@@ -212,10 +251,10 @@ export async function authorizeCredential(store: KeyStore, cred: { kind: string;
 }
 
 /** Headers only (C-08): a credential in the URL is an error, never a login. */
-export function extractCredential(input: { headers: Record<string, string | undefined>; url: string }): { secret?: string; token?: string; error?: string } {
+export function extractCredential(input: { headers: Record<string, string | undefined>; url: string }): { secret?: string; token?: string; oauthToken?: string; error?: string } {
   let url: URL;
   try { url = new URL(input.url); } catch { return { error: "credential_in_url" }; }
-  const keyLike = /ehk_live_[0-9a-f]{16,}|eho_test_[0-9a-f]{16,}/;
+  const keyLike = /ehk_live_[0-9a-f]{16,}|eho_(test|live)_[0-9a-f]{16,}/;
   for (const [name, value] of url.searchParams.entries()) {
     if (["api_key", "apikey", "key", "access_token", "token"].includes(name.toLowerCase()) || keyLike.test(value)) {
       return { error: "credential_in_url" };
@@ -225,23 +264,27 @@ export function extractCredential(input: { headers: Record<string, string | unde
   const auth = input.headers["authorization"] ?? input.headers["Authorization"];
   if (auth?.startsWith("Bearer ")) {
     const v = auth.slice(7).trim();
+    if (v.startsWith("eho_live_")) return { oauthToken: v };
     return v.startsWith("eho_test_") ? { token: v } : { secret: v };
   }
   return {};
 }
 
-export interface KeysEnv { EH_LOCAL_KEYS_JSON_B64?: string }
+export interface KeysEnv { EH_LOCAL_KEYS_JSON_B64?: string; EH_LOCAL_OAUTH_JSON_B64?: string }
 
 /** Build the request-scoped store for a Worker from its env stand-in. */
 const storesBySeed = new Map<string, Promise<KeyStore>>();
-export function storeFromEnv(env: { EH_LOCAL_KEYS_JSON_B64?: string }): Promise<KeyStore> {
+export function storeFromEnv(env: { EH_LOCAL_KEYS_JSON_B64?: string; EH_LOCAL_OAUTH_JSON_B64?: string }): Promise<KeyStore> {
   const seed = env.EH_LOCAL_KEYS_JSON_B64 ?? "";
-  if (!storesBySeed.has(seed)) {
-    storesBySeed.set(seed, (async () => {
+  const oauthSeed = env.EH_LOCAL_OAUTH_JSON_B64 ?? "";
+  const cacheKey = seed + "|" + oauthSeed;
+  if (!storesBySeed.has(cacheKey)) {
+    storesBySeed.set(cacheKey, (async () => {
       const store = createKeyStore();
       if (seed) await store.seedFromJson(new TextDecoder().decode(Uint8Array.from(atob(seed), (ch) => ch.charCodeAt(0))));
+      if (oauthSeed) await store.seedOAuthFromJson(new TextDecoder().decode(Uint8Array.from(atob(oauthSeed), (ch) => ch.charCodeAt(0))));
       return store;
     })());
   }
-  return storesBySeed.get(seed)!;
+  return storesBySeed.get(cacheKey)!;
 }

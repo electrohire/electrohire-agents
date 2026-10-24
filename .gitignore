@@ -36,3 +36,4 @@ venv/
 !.env.example
 coverage/
 c2-seed.json
+tests/frozen/c3-seed.json
