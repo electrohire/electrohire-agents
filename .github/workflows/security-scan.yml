@@ -54,7 +54,27 @@ jobs:
 
       - name: Scan for secrets (a finding fails this check and blocks the merge)
         # --redact keeps any found secret out of the logs.
-        run: ./gitleaks git --redact --verbose .
+        #
+        # The scan is scoped to the commits this change actually brings:
+        # a pull request's own commits, or the commits in a push to main.
+        # (An unscoped scan reads every branch in the repo, so an
+        # unrelated dirty branch would fail everyone else's checks —
+        # seen in testing on 2026-10-24. Every commit still gets scanned
+        # exactly when it is proposed for, or lands on, main.)
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          PR_BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          if [ "$EVENT_NAME" = "pull_request" ]; then
+            RANGE="${PR_BASE_SHA}..HEAD"
+          elif [ -n "$PUSH_BEFORE" ] && [ "$PUSH_BEFORE" != "0000000000000000000000000000000000000000" ]; then
+            RANGE="${PUSH_BEFORE}..HEAD"
+          else
+            RANGE="HEAD"
+          fi
+          echo "Scanning commit range: ${RANGE}"
+          ./gitleaks git --redact --verbose --log-opts="${RANGE}" .
 
   dependency-scan:
     name: Dependency scan — OSV-Scanner (report-only)
