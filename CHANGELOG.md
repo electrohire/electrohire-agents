@@ -11,6 +11,31 @@ version heading below tracks the repository release.
 
 ### Added
 
+- Phase C2 (local track, draft — served acceptance pending the deploy
+  credential remedy): personal API keys made real on the enforcement side.
+  - Shared authorization gate (`@electrohire/platform` apikeys module):
+    keys are verified from headers only (a key in a URL is rejected),
+    stored as one-way hashes and compared in constant time; revocation and
+    expiry refuse the very next request.
+  - Identical enforcement for keys and OAuth (C-10): the gate checks
+    scope, team/project binding, expiry and revocation the same way for a
+    personal key and for an OAuth test-double token standing in for C3's
+    OAuth 2.1 flow; scope checks now run in the MCP dispatch path too.
+  - Per-key quotas and rate limits (C-11) inside the free-tier budget,
+    with usage count + last-used maintained from request metadata and the
+    count exposed on key-authenticated API responses (`x-eh-key-usage`).
+  - CUI-bound keys (C-12): the AI provider policy is data in the gate —
+    OpenRouter only, `data_collection: deny` pinned, a maintained
+    allowlist of US-hosted, no-retention, non-covered-country endpoints;
+    a CUI-bound key is refused at any other endpoint.
+  - Connect guides corrected to the real dashboard flow (API Keys page,
+    scopes never edited in place — create + revoke instead) in the same
+    change (C-14); the parity manifest is unchanged because the tool and
+    route surface did not change.
+
+
+### Added
+
 - Phase C1 (local track, draft — served acceptance pending the deploy
   credential remedy): the read API and content MCP tools, built on a new
   `@electrohire/platform` workspace package.

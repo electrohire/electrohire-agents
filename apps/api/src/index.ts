@@ -3,7 +3,8 @@ import {
   loadContent, estimateCost, scopingChecklist, timelineCalculator,
   EstimateResponse, RateLimiter, globalKillOn, disabledTools, logRequest,
   identityLabel, screenInput, screenOutput, LocalAuditSink,
-  type ContentEnv, type GuardEnv,
+  extractCredential, authorizeCredential, storeFromEnv, scopeForApiPath,
+  type ContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
 /**
@@ -18,9 +19,9 @@ import {
  *
  * Keep API_VERSION in sync with this package's package.json version.
  */
-const API_VERSION = "0.2.0";
+const API_VERSION = "0.3.0";
 
-type Env = ContentEnv & GuardEnv;
+type Env = ContentEnv & GuardEnv & KeysEnv;
 const app = new OpenAPIHono<{ Bindings: Env }>();
 const limiter = new Map<string, RateLimiter>();
 const audit = new LocalAuditSink(); // INTERIM sink — A-08 substrate wiring is in @electrohire/platform (guard.ts)
@@ -47,6 +48,31 @@ app.use("*", async (c, next) => {
     logRequest({ identity: await identityLabel(c.req.raw), endpoint: c.req.path, status: 429 });
     return c.json({ error: "rate_limited", detail: "Per-IP rate limit reached. Slow down and retry shortly." }, 429);
   }
+  // C-08/C-10 (Phase C2): credentials travel in headers only — a key in a
+  // URL is rejected before anything else reads it. A presented credential
+  // (API key or OAuth test-double standing in for C3) passes the shared
+  // authorization gate for the route's scope; no credential keeps C1's
+  // public-read behavior.
+  const extracted = extractCredential({ headers: { authorization: c.req.header("authorization") }, url: c.req.url });
+  if (extracted.error) {
+    logRequest({ identity: "credential-in-url", endpoint: c.req.path, status: 400 });
+    return c.json({ error: "credential_in_url", detail: "API keys are accepted in headers only — a key in a URL is rejected." }, 400);
+  }
+  const presented = extracted.secret ?? extracted.token;
+  if (presented) {
+    const scope = scopeForApiPath(c.req.path);
+    if (scope) {
+      const store = await storeFromEnv(env);
+      const gate = await authorizeCredential(store, extracted.secret ? { kind: "api_key", secret: extracted.secret } : { kind: "oauth_double", token: extracted.token }, { scope });
+      if (!gate.allowed) {
+        const status = /quota|rate limit/i.test(gate.reason) ? 429 : /unknown|revoked|expired/i.test(gate.reason) ? 401 : 403;
+        const slug = status === 429 ? "quota_exceeded" : status === 401 ? "credential_refused" : "scope_refused";
+        logRequest({ identity: await identityLabel(c.req.raw), endpoint: c.req.path, status });
+        return c.json({ error: slug, detail: gate.reason }, status as never);
+      }
+      (c as any).set("keyUsage", gate.usageCount);
+    }
+  }
   // Input screening (layer 2): flag + log + raise scrutiny; never rewrite.
   let flagged: string[] = [];
   const probe = c.req.method === "POST" ? await c.req.raw.clone().text().catch(() => "") : new URL(c.req.url).search;
@@ -59,6 +85,8 @@ app.use("*", async (c, next) => {
   }
   await next();
   if (flagged.length) c.header("x-scrutiny", "raised");
+  const keyUsage = (c as any).get("keyUsage");
+  if (typeof keyUsage === "number") c.header("x-eh-key-usage", String(keyUsage));
   logRequest({ identity: await identityLabel(c.req.raw), endpoint: c.req.path, status: c.res.status, ...(flagged.length ? { flagged } : {}) });
 });
 
