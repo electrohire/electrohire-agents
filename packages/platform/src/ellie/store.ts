@@ -325,6 +325,11 @@ export function createD1Store(db: D1Database, files?: EllieFilesBucket): EllieSt
       }
       await db.prepare("INSERT INTO ellie_uploads (id, session_id, filename, mime, size, extracted_text, data, r2_key, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
         .bind(row.id, row.sessionId, row.filename, row.mime, row.size, row.extractedText, stored, r2Key, row.createdAt).run();
+      // The caller keeps the row object it passed (the engine returns
+      // its fields), so reflect the key the bytes actually landed
+      // under — without this the upload response reports r2Key null
+      // for an R2-backed upload.
+      row.r2Key = r2Key;
     },
     async listUploads(sessionId) {
       const { results } = await db.prepare("SELECT id, session_id, filename, mime, size, extracted_text, r2_key, length(data) AS data_len, created_at FROM ellie_uploads WHERE session_id = ? ORDER BY created_at ASC").bind(sessionId)
