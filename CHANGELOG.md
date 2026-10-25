@@ -53,11 +53,32 @@ version heading below tracks the repository release.
     offered" metadata assertion is superseded by this change and is
     recorded as such in the Phase E run record (the battery file
     itself is unchanged).
-  - New local battery `tests/frozen/ellie.test.mjs` (16 tests:
+  - Copy-audit alignment (2026-10-25): the intake question set is
+    production's agreed project-intake set (verbatim extraction in
+    the website program's QUESTION-SET.md; production slug tokens
+    for stage and services), with the facts-pass adaptations
+    recorded in `questions.ts` (A1–A7 — the beta's published facts
+    win over production wording). Ellie's prompt content is ported
+    from production's project-intake analyst + extraction prompts
+    (`prompts.ts` records ported vs fresh: consultant stance,
+    guardrails, non-answer handling, evidence-only extraction,
+    date/budget discipline; SG-1/SG-2/SG-3 framing written fresh),
+    re-routed to OpenRouter only — production's LiteLLM/direct
+    provider wiring was not ported. The E-07 corpus gains the five
+    named injection cases from production's evals (b-assistant-edge-
+    injection, b-customer-bio-injection, b-freelancer-ignore-
+    instructions, b-project-injection, b-supplier-fake-system).
+    `/api/widget-config` now answers in the production panel
+    contract's shape with beta values (no email-reply or
+    response-time promise in the copy). Production's backend
+    dependency set (231 open Dependabot alerts, 14 critical) is
+    inherited in full: none of it.
+  - New local battery `tests/frozen/ellie.test.mjs` (18 tests:
     disclosure-first, question-set diff, stepwise six sections,
     SG-3 stripping, approval hash/staff gates, escalation, the
-    injection corpus, cross-user refusal, CUI refusal, spend cap,
-    CMP-10 request capture + hostname grep, upload rules).
+    injection corpus incl. the mined production cases, cross-user
+    refusal, CUI refusal, spend cap, CMP-10 request capture +
+    hostname grep, upload rules).
   - Parity manifest regenerated (15 API routes, 11 MCP tools).
 
 ### Changed

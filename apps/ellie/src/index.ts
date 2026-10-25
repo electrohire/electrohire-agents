@@ -244,10 +244,32 @@ export default {
         const siteKey = url.searchParams.get("siteKey") ?? "";
         const origin = req.headers.get("origin") ?? "";
         const record = siteKey ? await lookupSiteKey(env, siteKey) : null;
-        if (!record || !record.enabled) return json({ enabled: false, panelUrl: PANEL_URL, origins: [] });
+        if (!record || !record.enabled) return json({ enabled: false, panelUrl: PANEL_URL, origins: [], allowedOrigins: [] });
         const headers: Record<string, string> = {};
         if (origin && record.origins.includes(origin)) headers["access-control-allow-origin"] = origin;
-        return json({ enabled: true, panelUrl: PANEL_URL, origins: record.origins }, 200, headers);
+        // The production panel contract's shape (copy audit §1.2:
+        // enabled, allowedOrigins, surface, starterChips,
+        // starterChipsLoggedIn, turnstileSiteKey, signupButtonEnabled,
+        // expectedReplyCopy, privacyHref), served with BETA values:
+        // expectedReplyCopy promises NO email reply and NO response
+        // time (audit C-15: the beta's ticket email leg is its own;
+        // owner decision 2026-10-25: no response-time promise).
+        // `origins` + `panelUrl` are kept from the original loader
+        // contract alongside the panel-contract names.
+        const chips = ellie.starterPromptsFor().map((s) => ({ label: s.label, prompt: s.prompt }));
+        return json({
+          enabled: true,
+          panelUrl: PANEL_URL,
+          origins: record.origins,
+          allowedOrigins: record.origins,
+          surface: "beta",
+          starterChips: chips,
+          starterChipsLoggedIn: chips,
+          turnstileSiteKey: (env as { ELLIE_TURNSTILE_SITE_KEY?: string }).ELLIE_TURNSTILE_SITE_KEY ?? "",
+          signupButtonEnabled: false,
+          expectedReplyCopy: "Your message is filed with the ElectroHire team in the support inbox, with this conversation attached.",
+          privacyHref: "/privacy",
+        }, 200, headers);
       }
 
       const engine = ellie.ellieEngineFromEnv(env);
