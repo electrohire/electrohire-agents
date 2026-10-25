@@ -7,6 +7,34 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [0.5.0] - 2026-10-24
+
+### Added
+
+- D1-backed key store for the API and MCP Workers (follow-up to the
+  Stage 1 backends acceptance): when the Worker carries the platform
+  D1 binding (`DB` → electrohire-platform), the shared authorization
+  gate resolves credentials from the same `api_keys` / `oauth_tokens`
+  / `oauth_test_doubles` tables the dashboard writes — so a key minted
+  in the dashboard works on the Workers, and a dashboard revocation
+  refuses the very next request. Usage counts, rate windows and
+  last-used persist back to the `api_keys` row, and every admitted
+  request writes an `api_key_requests` metadata row in the website
+  gate's exact shape. New frozen battery `tests/frozen/d1-store.test.mjs`
+  proves the behavior against the real 0004/0005 schema.
+- The committed `wrangler.toml` files for both apps are now the deploy
+  config: they carry the `api-beta` / `mcp-beta` custom-domain routes
+  and the `[[d1_databases]]` binding.
+
+### Changed
+
+- Platform, API and MCP versions move to 0.5.0.
+- The deployed Workers no longer carry the `EH_LOCAL_KEYS_JSON_B64` /
+  `EH_LOCAL_OAUTH_JSON_B64` seed vars: with `DB` bound, seed fixtures
+  are inert by precedence (the gate never reads them) and are removed
+  from the deployed settings. The seed path itself is unchanged for
+  local development and tests.
+
 ## [Unreleased]
 
 ### Added
