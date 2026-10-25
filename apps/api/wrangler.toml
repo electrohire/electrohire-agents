@@ -19,3 +19,12 @@ database_id = "c7aea331-7159-438c-a957-51632558a3c9"
 # Content mirror source (C-01): the website build emits this document.
 # Local dev overrides with CONTENT_JSON via wrangler --var / .dev.vars.
 CONTENT_SOURCE_URL = "https://electrohire-website-staging.pages.dev/content/v1.json"
+# Phase E: the Ellie action routes (POST /v1/actions/ellie-session,
+# GET /v1/ellie/analyses/:id) run the shared Ellie engine against the
+# same D1 binding. OPENROUTER_API_KEY is a SECRET (placed separately
+# with `wrangler secret put`, never a value in this file); until it is
+# placed, analysis generation reports blocked_model_not_configured
+# honestly instead of faking output.
+ELLIE_MODELS_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
+ELLIE_MODELS_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+ELLIE_DAILY_SPEND_CAP_USD = "5"

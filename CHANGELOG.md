@@ -7,6 +7,63 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [0.6.0] - 2026-10-25
+
+### Added
+
+- Phase E — the Ellie service backend (spec 002 Phase 1; requirements
+  E-01…E-05, E-07, E-08, E-10, and the service half of E-06):
+  - New `@electrohire/platform` Ellie engine (`src/ellie/`): the
+    versioned intake question set v1.0.0 as data (vendored
+    `question-set.json`; the website's question-set document is
+    generated from it), starter prompts per project type, the session
+    state machine with the AI disclosure as every conversation's first
+    message (SG-2), stepwise generation of the six analyst outputs
+    (requirements, architecture, BOM, cost estimate, timeline,
+    compliance roadmap — each a versioned draft with assumptions and
+    unknowns; estimates always ranges with drivers, never a confidence
+    percentage — SG-3, enforced by a hard output filter), staff-only
+    approval of an exact version by payload hash (SG-1), edits that
+    return an output to draft, and escalation filing a support ticket
+    in the B-05 inbox shape with the conversation attached.
+  - OpenRouter-only model client (AI provider policy / CMP-10):
+    every request pins `provider.data_collection = "deny"`; ordered
+    fallback on 404/429/5xx; the CUI profile additionally pins
+    `allow_fallbacks = false` and refuses honestly
+    (`cui_no_endpoint`) rather than downgrading. A daily spend guard
+    refuses model calls at the configured cap. No direct provider
+    integration exists anywhere.
+  - New Worker `apps/ellie` (`electrohire-ellie`,
+    ellie-beta.electrohire.com): the production-style site-key loader
+    (`/loader.js` + `/api/widget-config`, registered origins only),
+    website chat sessions (anonymous: site key + Origin + server-side
+    Turnstile; signed-in: the internal BFF path only), uploads stored
+    as D1 BLOBs with a 2 MB cap (R2 is not enabled on this account —
+    storage sits behind the store interface), the `/panel` shell for
+    the website-side panel bundle, and the credential-gated analysis
+    API (`/api/analyses*`, scope `action:ellie_session`, audience-bound
+    to the Ellie resource, cross-user bound).
+  - Ellie actions on the existing surfaces (C-13 async pattern):
+    `POST /v1/actions/ellie-session` + `GET /v1/ellie/analyses/:id` on
+    the API Worker, and the `electrohire_ellie_session` /
+    `electrohire_ellie_analysis` MCP tools, all through the shared
+    gate. OAuth now offers `action:ellie_session` and the Ellie
+    resource (`https://ellie-beta.electrohire.com`) — Phase E is
+    un-gated as of 2026-10-25; the frozen C3 battery's "Ellie never
+    offered" metadata assertion is superseded by this change and is
+    recorded as such in the Phase E run record (the battery file
+    itself is unchanged).
+  - New local battery `tests/frozen/ellie.test.mjs` (16 tests:
+    disclosure-first, question-set diff, stepwise six sections,
+    SG-3 stripping, approval hash/staff gates, escalation, the
+    injection corpus, cross-user refusal, CUI refusal, spend cap,
+    CMP-10 request capture + hostname grep, upload rules).
+  - Parity manifest regenerated (15 API routes, 11 MCP tools).
+
+### Changed
+
+- Platform, API, MCP and Ellie versions move to 0.6.0.
+
 ## [0.5.0] - 2026-10-24
 
 ### Added

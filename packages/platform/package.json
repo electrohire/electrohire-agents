@@ -2,7 +2,7 @@
   "dependencies": {
     "zod": "^4.6.7"
   },
-  "description": "Shared platform code for the ElectroHire API and MCP Workers: mirrored content loading, tool logic, rate-limit/kill-switch guard, the C-15 prompt-injection defense layers, and the Phase C2 API-key authorization gate (scopes, binding, quotas, CUI provider policy). No content facts live here \u2014 content is mirrored from the website's generated /content/v1.json (C-01). Phase C3 adds OAuth 2.1 (authorization code + PKCE, RFC 9728/8414 metadata, RFC 8707 audience-bound tokens in the same gate) and the newsletter / support-ticket action tools with C-15 layers 3+4 real. Ellie actions are NOT built (Phase E gated).",
+  "description": "Shared platform code for the ElectroHire API, MCP and Ellie Workers: mirrored content loading, tool logic, rate-limit/kill-switch guard, the C-15 prompt-injection defense layers, the Phase C2 API-key authorization gate (scopes, binding, quotas, CUI provider policy), Phase C3 OAuth 2.1 and action tools, and the Phase E Ellie engine (OpenRouter-only model client, versioned intake, stepwise six-section analyses, staff approval by payload hash). No content facts live here \u2014 content is mirrored from the website's generated /content/v1.json (C-01).",
   "devDependencies": {
     "@cloudflare/workers-types": "^5.20261023.1",
     "typescript": "^7.0.2"
@@ -15,7 +15,8 @@
     "./tools": "./src/tools.ts",
     "./apikeys": "./src/apikeys.ts",
     "./oauth": "./src/oauth.ts",
-    "./actions": "./src/actions.ts"
+    "./actions": "./src/actions.ts",
+    "./ellie": "./src/ellie/index.ts"
   },
   "name": "@electrohire/platform",
   "private": true,
@@ -23,5 +24,5 @@
     "typecheck": "tsc --noEmit -p tsconfig.json"
   },
   "type": "module",
-  "version": "0.5.0"
+  "version": "0.6.0"
 }

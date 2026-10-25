@@ -4,7 +4,7 @@ import {
   EstimateResponse, RateLimiter, globalKillOn, disabledTools, logRequest,
   identityLabel, screenInput, screenOutput, LocalAuditSink,
   extractCredential, authorizeCredential, storeFromEnv, scopeForApiPath,
-  protectedResourceMetadata, RESOURCES, scopeForApiAction, createActionStore,
+  protectedResourceMetadata, RESOURCES, scopeForApiAction, createActionStore, ellie,
   type ContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
@@ -20,9 +20,9 @@ import {
  *
  * Keep API_VERSION in sync with this package's package.json version.
  */
-const API_VERSION = "0.5.0";
+const API_VERSION = "0.6.0";
 
-type Env = ContentEnv & GuardEnv & KeysEnv;
+type Env = ContentEnv & GuardEnv & KeysEnv & ellie.EllieEnv;
 const AUTH_ISSUER = "https://auth-beta.electrohire.com";
 /** C-13 action store (LOCAL stand-in for the website data layer's B-02/B-05
  * records + D-04 double opt-in — same behavior, in-memory home). */
@@ -253,10 +253,47 @@ app.openapi(createRoute({ method: "post", path: "/v1/actions/support-ticket", ta
     return c.json({ id: t.id, status: t.status, subject: t.subject }, 200);
   });
 
-// NOTE (Phase E gated): no Ellie action route exists. Ellie session /
-// analysis actions ship only when Phase E's backend exists behind them
-// and Tristen names its builder (plan C-13 / E-06). Nothing here offers
-// or promises them.
+// Phase E (2026-10-25): the Ellie backend exists (packages/platform
+// ellie engine + apps/ellie), so the C-13 Ellie actions ship here —
+// the asynchronous pattern: starting an analysis returns a handle, the
+// status route collects the result (advancing generation one section
+// per read); no API call waits on Ellie thinking. Both routes pass the
+// shared gate in middleware with scope action:ellie_session (see
+// scopeForApiAction); the handlers add the cross-user check (E-08): a
+// credential reaches only its own account's analyses.
+const EllieSessionBody = z.object({ sessionId: z.string().optional(), brief: z.string().optional() }).openapi("EllieSessionRequest");
+const EllieSessionResponse = z.object({ analysisId: z.string(), status: z.string() }).openapi("EllieSessionResponse");
+app.openapi(createRoute({ method: "post", path: "/v1/actions/ellie-session", tags: ["Actions"], summary: "Start an Ellie analysis (action — requires action:ellie_session) from a brief or an existing Ellie session id; returns a handle immediately (C-13 async pattern)",
+  request: { body: { content: { "application/json": { schema: EllieSessionBody } }, required: true } },
+  responses: { 200: json(EllieSessionResponse, "The analysis handle."), 401: err("Credential required or refused."), 403: err("Scope, audience, or cross-user refused.") } }),
+  async (c) => {
+    const gate = (c as any).get("gate");
+    const body = await c.req.json().catch(() => ({}));
+    try {
+      const engine = ellie.ellieEngineFromEnv(c.env as Env);
+      const handle = await engine.startAnalysis({ sessionId: body.sessionId, brief: body.brief }, { accountId: gate?.accountId });
+      return c.json({ analysisId: handle.analysisId, status: handle.status }, 200);
+    } catch (e: any) {
+      const status = e instanceof ellie.EllieError && e.code === "forbidden" ? 403 : e instanceof ellie.EllieError && e.code === "not_found" ? 404 : 400;
+      return c.json({ error: e instanceof ellie.EllieError ? e.code : "ellie_failed", detail: String(e?.message ?? e) }, status as never);
+    }
+  });
+
+const EllieAnalysisResponse = z.object({ id: z.string(), sessionId: z.string().nullable(), status: z.string(), currentStep: z.number(), sections: z.array(z.any()) }).openapi("EllieAnalysisResponse");
+app.openapi(createRoute({ method: "get", path: "/v1/ellie/analyses/{id}", tags: ["Actions"], summary: "Ellie analysis status/result — advances one generation step per read while generating; only the owning account's credential may read it (E-08)",
+  request: { params: z.object({ id: z.string() }) },
+  responses: { 200: json(EllieAnalysisResponse, "The analysis and its sections."), 401: err("Credential required or refused."), 403: err("Scope, audience, or cross-user refused."), 404: err("Analysis not found.") } }),
+  async (c) => {
+    const gate = (c as any).get("gate");
+    try {
+      const engine = ellie.ellieEngineFromEnv(c.env as Env);
+      const a = await engine.getAnalysisAdvancing(c.req.param("id"), { accountId: gate?.accountId });
+      return c.json({ id: a.id, sessionId: a.sessionId, status: a.status, currentStep: a.currentStep, sections: a.sections }, 200);
+    } catch (e: any) {
+      const status = e instanceof ellie.EllieError && e.code === "forbidden" ? 403 : e instanceof ellie.EllieError && e.code === "not_found" ? 404 : 400;
+      return c.json({ error: e instanceof ellie.EllieError ? e.code : "ellie_failed", detail: String(e?.message ?? e) }, status as never);
+    }
+  });
 
 // NOTE (C-02): no /v1/blog route is registered. Blog data does not exist
 // until Phase B (B-03); an absent endpoint is honest, a fake empty one is not.

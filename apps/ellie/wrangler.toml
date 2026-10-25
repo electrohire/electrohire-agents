@@ -1,0 +1,44 @@
+# ElectroHire Ellie service Worker (Phase E).
+# This committed config IS the deploy config for the beta surface: the
+# custom-domain route and the D1 binding to the platform store
+# (electrohire-platform) are committed, so a deploy from this file
+# reproduces the served end state.
+#
+# NO R2 binding: R2 is not enabled on this Cloudflare account (owner
+# dashboard act, outside Phase E). Uploads are stored as D1 BLOBs
+# through the platform Ellie store (2 MB cap) — see
+# packages/platform/src/ellie/store.ts.
+#
+# Secrets are NOT in this file and are placed separately with
+# `wrangler secret put`: OPENROUTER_API_KEY (dedicated platform key,
+# owner-side step — until it exists, Ellie answers with the honest
+# not-configured fallback), TURNSTILE_SECRET_KEY, ELLIE_INTERNAL_KEY.
+name = "electrohire-ellie"
+main = "src/index.ts"
+compatibility_date = "2025-06-01"
+routes = [{ pattern = "ellie-beta.electrohire.com", custom_domain = true }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "electrohire-platform"
+database_id = "c7aea331-7159-438c-a957-51632558a3c9"
+
+# Static assets: the panel bundle the website-side builder ships into
+# apps/ellie/assets (a stub index.html is committed now). The Worker
+# serves /panel itself (for the framing headers) and /panel-assets/*
+# from this binding.
+[assets]
+directory = "./assets"
+binding = "ASSETS"
+# The Worker runs first: it serves /panel itself (framing headers) and
+# delegates /panel-assets/* to the assets binding.
+run_worker_first = true
+
+[vars]
+# Ellie model configuration (OpenRouter only — AI-PROVIDER-POLICY).
+# Model lists are ordered: the first that answers serves the call.
+ELLIE_MODELS_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
+ELLIE_MODELS_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+# Daily model spend cap in USD (plan Tripwire 2); the engine refuses
+# model calls once the day's ellie_usage total reaches it.
+ELLIE_DAILY_SPEND_CAP_USD = "5"
