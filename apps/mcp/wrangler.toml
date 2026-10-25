@@ -1,9 +1,19 @@
 # ElectroHire remote MCP server Worker.
-# Deploys to Cloudflare Workers (free-tier-first). The production custom
-# domain / routes are attached at deploy time, not in this scaffold.
+# This committed config IS the deploy config for the beta surface
+# (follow-up 2026-10-24): the custom-domain route and the D1 binding to
+# the platform store (electrohire-platform) are committed, so a deploy
+# from this file reproduces the served end state — DB binding +
+# CONTENT_SOURCE_URL only; the old EH_LOCAL_* seed vars are gone (with
+# DB bound, the gate resolves from D1 and seeds are never read).
 name = "electrohire-mcp"
 main = "src/index.ts"
 compatibility_date = "2025-06-01"
+routes = [{ pattern = "mcp-beta.electrohire.com", custom_domain = true }]
+
+[[d1_databases]]
+binding = "DB"
+database_name = "electrohire-platform"
+database_id = "c7aea331-7159-438c-a957-51632558a3c9"
 
 [vars]
 # Content mirror source (C-01): the website build emits this document.
