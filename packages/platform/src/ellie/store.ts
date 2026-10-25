@@ -7,27 +7,34 @@
  *
  *   ellie_site_keys(key TEXT PRIMARY KEY, origins TEXT NOT NULL DEFAULT '[]',
  *     enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL)
- *   ellie_sessions(id TEXT PRIMARY KEY, account_id TEXT, site_key TEXT,
- *     cui_flag INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT '{}',
+ *   ellie_sessions(id TEXT PRIMARY KEY, account_id TEXT,
+ *     site_key TEXT NOT NULL, cui_flag INTEGER NOT NULL DEFAULT 0,
+ *     state TEXT NOT NULL DEFAULT 'intake',
  *     question_set_version TEXT NOT NULL, session_token_hash TEXT,
  *     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL)
  *     -- session_token_hash is the ONE addition to the coordinator's
  *     -- original list, proposed in the Phase E run record: anonymous
  *     -- sessions carry a per-session bearer token, hashed at rest
- *     -- (SHA-256 hex), never the token itself.
+ *     -- (SHA-256 hex), never the token itself. site_key is NOT NULL
+ *     -- in the migration: sessions with no site key (the internal
+ *     -- signed-in path) store '' — the D1 store maps null → ''.
+ *     -- The engine stores its JSON intake state in `state`; the
+ *     -- migration's lifecycle comment describes the same column from
+ *     -- the panel's point of view.
  *   ellie_messages(id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
  *     role TEXT NOT NULL, content TEXT NOT NULL,
  *     flags TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL)
  *   ellie_uploads(id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
- *     r2_key TEXT, filename TEXT NOT NULL, mime TEXT NOT NULL,
+ *     data BLOB NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL,
  *     size INTEGER NOT NULL, extracted_text TEXT NOT NULL DEFAULT '',
- *     data BLOB, created_at INTEGER NOT NULL)
+ *     created_at INTEGER NOT NULL)
  *     -- AMENDED 2026-10-25 (coordinator): R2 is NOT enabled on this
  *     -- Cloudflare account, so upload bytes live in the `data` BLOB
- *     -- column (single-row blob, 2 MB cap enforced in engine.ts).
- *     -- r2_key stays NULL on this track. Enabling R2 later is a
- *     -- storage swap BEHIND this store interface: createUpload /
- *     -- getUpload are the only methods that touch the bytes.
+ *     -- column (single-row blob, 2 MB cap enforced in engine.ts);
+ *     -- there is NO r2_key column in the migration. Enabling R2
+ *     -- later is a storage swap BEHIND this store interface:
+ *     -- createUpload / listUploads are the only methods that touch
+ *     -- the bytes.
  *   ellie_analyses(id TEXT PRIMARY KEY, session_id TEXT, account_id TEXT,
  *     brief TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
  *     current_step INTEGER NOT NULL DEFAULT 0,
@@ -253,13 +260,13 @@ export function createD1Store(db: D1Database): EllieStore {
     },
     async createSession(row) {
       await db.prepare("INSERT INTO ellie_sessions (id, account_id, site_key, cui_flag, state, question_set_version, session_token_hash, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)")
-        .bind(row.id, row.accountId, row.siteKey, row.cuiFlag ? 1 : 0, JSON.stringify(row.state), row.questionSetVersion, row.sessionTokenHash, row.createdAt, row.updatedAt).run();
+        .bind(row.id, row.accountId, row.siteKey ?? "", row.cuiFlag ? 1 : 0, JSON.stringify(row.state), row.questionSetVersion, row.sessionTokenHash, row.createdAt, row.updatedAt).run();
     },
     async getSession(id) {
       const row = await db.prepare("SELECT * FROM ellie_sessions WHERE id = ?").bind(id)
         .first<{ id: string; account_id: string | null; site_key: string | null; cui_flag: number; state: string; question_set_version: string; session_token_hash: string | null; created_at: number; updated_at: number }>();
       if (!row) return null;
-      return { id: row.id, accountId: row.account_id, siteKey: row.site_key, cuiFlag: row.cui_flag === 1, state: parseJson(row.state, {}), questionSetVersion: row.question_set_version, sessionTokenHash: row.session_token_hash, createdAt: row.created_at, updatedAt: row.updated_at };
+      return { id: row.id, accountId: row.account_id, siteKey: row.site_key || null, cuiFlag: row.cui_flag === 1, state: parseJson(row.state, {}), questionSetVersion: row.question_set_version, sessionTokenHash: row.session_token_hash, createdAt: row.created_at, updatedAt: row.updated_at };
     },
     async updateSession(id, state, updatedAt) {
       await db.prepare("UPDATE ellie_sessions SET state = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(state), updatedAt, id).run();
@@ -274,14 +281,15 @@ export function createD1Store(db: D1Database): EllieStore {
       return results.map((r) => ({ id: r.id, sessionId: r.session_id, role: r.role, content: r.content, flags: parseJson<string[]>(r.flags, []), createdAt: r.created_at }));
     },
     async createUpload(row) {
-      // D1 BLOB storage (amended track): bytes go in the `data` column.
-      await db.prepare("INSERT INTO ellie_uploads (id, session_id, r2_key, filename, mime, size, extracted_text, data, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
-        .bind(row.id, row.sessionId, row.r2Key, row.filename, row.mime, row.size, row.extractedText, row.data ?? null, row.createdAt).run();
+      // D1 BLOB storage (amended track): bytes go in the `data` column
+      // (NOT NULL in migration 0007; there is no r2_key column).
+      await db.prepare("INSERT INTO ellie_uploads (id, session_id, filename, mime, size, extracted_text, data, created_at) VALUES (?,?,?,?,?,?,?,?)")
+        .bind(row.id, row.sessionId, row.filename, row.mime, row.size, row.extractedText, row.data ?? new Uint8Array(0), row.createdAt).run();
     },
     async listUploads(sessionId) {
-      const { results } = await db.prepare("SELECT id, session_id, r2_key, filename, mime, size, extracted_text, (data IS NOT NULL) AS has_data, created_at FROM ellie_uploads WHERE session_id = ? ORDER BY created_at ASC").bind(sessionId)
-        .all<{ id: string; session_id: string; r2_key: string | null; filename: string; mime: string; size: number; extracted_text: string; has_data: number; created_at: number }>();
-      return results.map((r) => ({ id: r.id, sessionId: r.session_id, r2Key: r.r2_key, filename: r.filename, mime: r.mime, size: r.size, extractedText: r.extracted_text, hasData: r.has_data === 1, createdAt: r.created_at }));
+      const { results } = await db.prepare("SELECT id, session_id, filename, mime, size, extracted_text, (data IS NOT NULL) AS has_data, created_at FROM ellie_uploads WHERE session_id = ? ORDER BY created_at ASC").bind(sessionId)
+        .all<{ id: string; session_id: string; filename: string; mime: string; size: number; extracted_text: string; has_data: number; created_at: number }>();
+      return results.map((r) => ({ id: r.id, sessionId: r.session_id, r2Key: null, filename: r.filename, mime: r.mime, size: r.size, extractedText: r.extracted_text, hasData: r.has_data === 1, createdAt: r.created_at }));
     },
     async createAnalysis(row) {
       await db.prepare("INSERT INTO ellie_analyses (id, session_id, account_id, brief, status, current_step, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)")

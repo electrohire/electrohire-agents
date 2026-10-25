@@ -296,6 +296,50 @@ test("CMP-10 grep: no direct provider hostnames in new code", () => {
   }
 });
 
+test("D1 store runs against the REAL migration 0007 schema (website repo, verbatim)", async () => {
+  // Schema copied verbatim from the website repo's
+  // platform/migrations/0007_ellie.sql (plus id-only accounts +
+  // support_tickets + audit_log stubs in the shapes of 0001/0003/0002,
+  // the other tables the store touches) behind a node:sqlite D1 shim —
+  // the same harness pattern as tests/frozen/d1-store.test.mjs.
+  const { DatabaseSync } = await import("node:sqlite");
+  const raw = new DatabaseSync(":memory:");
+  raw.exec(`PRAGMA foreign_keys = OFF;
+  CREATE TABLE accounts (id TEXT PRIMARY KEY, is_staff INTEGER NOT NULL DEFAULT 0);
+  CREATE TABLE audit_log (seq INTEGER PRIMARY KEY AUTOINCREMENT, id TEXT NOT NULL UNIQUE, ts INTEGER NOT NULL, actor_account_id TEXT, actor_email TEXT NOT NULL DEFAULT '', event_type TEXT NOT NULL, action TEXT NOT NULL, team_id TEXT, subject_account_id TEXT, ip TEXT NOT NULL DEFAULT '', surface TEXT NOT NULL DEFAULT '', detail TEXT NOT NULL DEFAULT '{}', prev_hash TEXT NOT NULL DEFAULT '', entry_hash TEXT NOT NULL DEFAULT '');
+  CREATE TABLE support_tickets (id TEXT PRIMARY KEY, requester_name TEXT NOT NULL DEFAULT '', requester_email TEXT NOT NULL DEFAULT '', subject TEXT NOT NULL DEFAULT '', body TEXT NOT NULL DEFAULT '', context TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'open', is_data_request INTEGER NOT NULL DEFAULT 0, source_route TEXT NOT NULL DEFAULT 'site-contact', received_at INTEGER NOT NULL, due_at INTEGER, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  CREATE TABLE ellie_site_keys (key TEXT PRIMARY KEY, origins TEXT NOT NULL DEFAULT '[]', enabled INTEGER NOT NULL DEFAULT 1, created_at INTEGER NOT NULL);
+  CREATE TABLE ellie_sessions (id TEXT PRIMARY KEY, account_id TEXT, site_key TEXT NOT NULL, cui_flag INTEGER NOT NULL DEFAULT 0, state TEXT NOT NULL DEFAULT 'intake', question_set_version TEXT NOT NULL, session_token_hash TEXT, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  CREATE TABLE ellie_messages (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES ellie_sessions(id), role TEXT NOT NULL, content TEXT NOT NULL, flags TEXT NOT NULL DEFAULT '[]', created_at INTEGER NOT NULL);
+  CREATE TABLE ellie_uploads (id TEXT PRIMARY KEY, session_id TEXT NOT NULL REFERENCES ellie_sessions(id), data BLOB NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL, size INTEGER NOT NULL, extracted_text TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL);
+  CREATE TABLE ellie_analyses (id TEXT PRIMARY KEY, session_id TEXT REFERENCES ellie_sessions(id), account_id TEXT, brief TEXT NOT NULL DEFAULT '', status TEXT NOT NULL DEFAULT 'pending', current_step INTEGER NOT NULL DEFAULT 0, created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
+  CREATE TABLE ellie_outputs (id TEXT PRIMARY KEY, analysis_id TEXT NOT NULL REFERENCES ellie_analyses(id), section TEXT NOT NULL, version INTEGER NOT NULL DEFAULT 1, content TEXT NOT NULL, status TEXT NOT NULL DEFAULT 'draft', approved_by TEXT, approved_at INTEGER, payload_hash TEXT NOT NULL, created_at INTEGER NOT NULL);
+  CREATE TABLE ellie_usage (day TEXT NOT NULL, model TEXT NOT NULL, requests INTEGER NOT NULL DEFAULT 0, cost_usd REAL NOT NULL DEFAULT 0, PRIMARY KEY (day, model));`);
+  raw.prepare("INSERT INTO accounts (id, is_staff) VALUES ('staff-1', 1), ('user-1', 0)").run();
+  const db = { prepare(sql) { let params = []; const stmt = { bind(...p) { params = p; return stmt; }, async first() { const r = raw.prepare(sql).get(...params); return r === undefined ? null : r; }, async all() { return { results: raw.prepare(sql).all(...params) }; }, async run() { raw.prepare(sql).run(...params); return { success: true }; } }; return stmt; } };
+  const { createD1Store } = ellie;
+  const store = createD1Store(db);
+  const engine = createEngine({ store, modelClient: new ScriptedModelClient(Array(40).fill("D1-backed draft body.")) });
+  const { session, sessionToken } = await engine.createSession({ siteKey: "pk_test_123" });
+  assert.ok(sessionToken);
+  assert.equal(await engine.verifySessionToken(session.id, sessionToken), true);
+  for (const f of QUESTION_SET) await engine.handleMessage(session.id, SAMPLE_ANSWERS[f.id] ?? "x", {});
+  const up = await engine.registerUpload(session.id, { filename: "notes.txt", mime: "text/plain", size: 5, bytes: new TextEncoder().encode("hello"), extractedText: "hello" });
+  assert.ok(up.id);
+  const fin = await engine.finalize(session.id, {});
+  let a; for (let i = 0; i < 6; i++) a = await engine.advanceAnalysis(fin.analysisId);
+  assert.equal(a.sections.length, 6);
+  const req = a.sections[0];
+  const approved = await engine.approveOutput(fin.analysisId, { section: req.section, version: req.version, payloadHash: req.payloadHash, approverAccountId: "staff-1" });
+  assert.equal(approved.status, "approved");
+  const esc = await engine.escalate(session.id, { note: "help" });
+  assert.ok(esc.ticketId);
+  const auditRows = raw.prepare("SELECT COUNT(*) AS n FROM audit_log").get();
+  assert.ok(auditRows.n >= 3, `audit chain rows written (got ${auditRows.n})`);
+  const usage = raw.prepare("SELECT COUNT(*) AS n FROM ellie_usage").get();
+  assert.ok(usage.n >= 1);
+});
+
 test("upload rules: accepted types named, 2MB cap, extracted text into state (E-03, amended D1-blob storage)", async () => {
   assert.ok(ACCEPTED_UPLOAD_TYPES.includes("pdf") && ACCEPTED_UPLOAD_TYPES.includes("png"));
   assert.equal(UPLOAD_MAX_BYTES, 2 * 1024 * 1024);
