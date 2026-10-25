@@ -90,6 +90,12 @@ test("R2-bound store: bytes land in the bucket, the row carries the key, data st
   const row = uploadRow(enc("hello r2"));
   await store.createUpload(row);
   const key = `ellie/sess-1/${row.id}`;
+  // The engine returns the row object it passed to createUpload, so
+  // the row itself must report the key after the call — the served
+  // upload response reads it from there. (Pinned after the first
+  // served round-trip returned r2Key null in the response while the
+  // database row was correct.)
+  assert.equal(row.r2Key, key);
   assert.equal(dec(files.objects.get(key)), "hello r2");
   const rawRow = db._raw.prepare("SELECT r2_key, length(data) AS dl FROM ellie_uploads WHERE id = ?").get(row.id);
   assert.equal(rawRow.r2_key, key);
