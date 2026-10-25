@@ -17,8 +17,12 @@
  *    builder ships the real panel UI as a static bundle into
  *    apps/ellie/assets (a stub index.html is committed there now).
  *
- * Uploads: stored as D1 BLOBs through the Ellie store (amended
- * 2026-10-25 — R2 is not enabled on this account; no R2 binding here).
+ * Uploads: stored through the Ellie store — bytes in the platform R2
+ * bucket (binding FILES → electrohire-uploads, keys ellie/<session>/
+ * <upload>) since the R2 storage swap of 2026-10-25 (migration 0011);
+ * the D1 BLOB path remains the store's no-bucket fallback. Upload
+ * list/read/delete routes sit behind the same session authorization
+ * as the chat POST routes.
  *
  * Model calls: OpenRouter only, through @electrohire/platform's Ellie
  * engine. With OPENROUTER_API_KEY absent, sessions answer with the
@@ -33,7 +37,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.6.0";
+const ELLIE_VERSION = "0.7.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
@@ -328,6 +332,38 @@ export default {
           const body = (await req.json().catch(() => ({}))) as { note?: string };
           const r = await engine.escalate(sessionId, { note: body.note });
           return json({ ok: true, ticketId: r.ticketId });
+        }
+      }
+
+      // Upload read-back + removal (R2 storage swap, 2026-10-25): the
+      // same session authorization as the chat POST routes — a caller
+      // can only ever see or remove its own session's uploads.
+      const uploadsMatch = path.match(/^\/api\/chat\/sessions\/([^/]+)\/uploads(?:\/([^/]+))?$/);
+      if (uploadsMatch && (req.method === "GET" || req.method === "DELETE")) {
+        const [, sessionId, uploadId] = uploadsMatch;
+        const authz = await authorizeSession(env, req, sessionId);
+        if (!authz.ok) return json({ error: "session_refused", detail: "This session token or credential does not own that session." }, authz.status ?? 401);
+        if (req.method === "GET" && !uploadId) {
+          const store = ellie.ellieStoreFromEnv(env);
+          const session = await store.getSession(sessionId).catch(() => null);
+          if (!session) return json({ error: "not_found", detail: "No such session." }, 404);
+          return json({ uploads: await store.listUploads(sessionId) });
+        }
+        if (req.method === "GET" && uploadId) {
+          const got = await engine.getUpload(sessionId, uploadId);
+          if (!got) return json({ error: "not_found", detail: "No such upload in this session." }, 404);
+          return new Response(got.data as BodyInit, {
+            headers: {
+              "content-type": got.row.mime || "application/octet-stream",
+              "content-disposition": `inline; filename="${got.row.filename.replace(/"/g, "")}"`,
+              "cache-control": "private, no-store",
+            },
+          });
+        }
+        if (req.method === "DELETE" && uploadId) {
+          const gone = await engine.removeUpload(sessionId, uploadId, { accountId: authz.accountId });
+          if (!gone) return json({ error: "not_found", detail: "No such upload in this session." }, 404);
+          return json({ ok: true, deleted: uploadId });
         }
       }
 

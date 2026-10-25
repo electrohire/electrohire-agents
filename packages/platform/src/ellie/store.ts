@@ -27,14 +27,19 @@
  *   ellie_uploads(id TEXT PRIMARY KEY, session_id TEXT NOT NULL,
  *     data BLOB NOT NULL, filename TEXT NOT NULL, mime TEXT NOT NULL,
  *     size INTEGER NOT NULL, extracted_text TEXT NOT NULL DEFAULT '',
- *     created_at INTEGER NOT NULL)
- *     -- AMENDED 2026-10-25 (coordinator): R2 is NOT enabled on this
- *     -- Cloudflare account, so upload bytes live in the `data` BLOB
- *     -- column (single-row blob, 2 MB cap enforced in engine.ts);
- *     -- there is NO r2_key column in the migration. Enabling R2
- *     -- later is a storage swap BEHIND this store interface:
- *     -- createUpload / listUploads are the only methods that touch
- *     -- the bytes.
+ *     r2_key TEXT, created_at INTEGER NOT NULL)
+ *     -- AMENDED 2026-10-25 (coordinator): R2 was NOT enabled on this
+ *     -- Cloudflare account, so upload bytes lived in the `data` BLOB
+ *     -- column (single-row blob, 2 MB cap enforced in engine.ts).
+ *     -- R2 STORAGE SWAP 2026-10-25 (migration 0011): R2 is enabled now.
+ *     -- When an R2 bucket is bound (env FILES), createUpload puts the
+ *     -- bytes in the bucket (electrohire-uploads) under the key
+ *     -- ellie/<session_id>/<upload_id>, stores that key in r2_key, and
+ *     -- leaves `data` an empty BLOB (the column stays NOT NULL; legacy
+ *     -- rows keep their bytes in `data` with r2_key NULL and still
+ *     -- read). With no bucket bound, the D1 BLOB behavior is unchanged
+ *     -- (local track / fallback). The byte-touching methods are
+ *     -- createUpload / getUploadData / deleteUpload.
  *   ellie_analyses(id TEXT PRIMARY KEY, session_id TEXT, account_id TEXT,
  *     brief TEXT NOT NULL DEFAULT '', status TEXT NOT NULL,
  *     current_step INTEGER NOT NULL DEFAULT 0,
@@ -120,6 +125,8 @@ export interface EllieStore {
   listMessages(sessionId: string): Promise<MessageRow[]>;
   createUpload(row: UploadRow & { data?: Uint8Array | null }): Promise<void>;
   listUploads(sessionId: string): Promise<UploadRow[]>;
+  getUploadData(id: string): Promise<{ row: UploadRow; data: Uint8Array } | null>;
+  deleteUpload(id: string): Promise<boolean>;
   createAnalysis(row: AnalysisRow): Promise<void>;
   getAnalysis(id: string): Promise<AnalysisRow | null>;
   updateAnalysis(id: string, patch: { status?: string; currentStep?: number }, updatedAt: number): Promise<void>;
@@ -176,6 +183,18 @@ export function createMemoryStore(opts: MemoryStoreOpts = {}): EllieStore & {
     async listMessages(sessionId: string) { return messages.filter((m) => m.sessionId === sessionId).map((m) => ({ ...m })); },
     async createUpload(row: UploadRow & { data?: Uint8Array | null }) { uploads.push({ ...row }); },
     async listUploads(sessionId: string) { return uploads.filter((u) => u.sessionId === sessionId).map(({ data: _d, ...rest }) => ({ ...rest })); },
+    async getUploadData(id: string) {
+      const u = uploads.find((x) => x.id === id);
+      if (!u) return null;
+      const { data, ...rest } = u;
+      return { row: rest as UploadRow, data: data ?? new Uint8Array(0) };
+    },
+    async deleteUpload(id: string) {
+      const i = uploads.findIndex((x) => x.id === id);
+      if (i < 0) return false;
+      uploads.splice(i, 1);
+      return true;
+    },
     async createAnalysis(row: AnalysisRow) { analyses.set(row.id, { ...row }); },
     async getAnalysis(id: string) { const a = analyses.get(id); return a ? { ...a } : null; },
     async updateAnalysis(id: string, patch: { status?: string; currentStep?: number }, updatedAt: number) {
@@ -250,7 +269,17 @@ const parseJson = <T>(raw: string | null | undefined, fallback: T): T => {
   try { return JSON.parse(raw) as T; } catch { return fallback; }
 };
 
-export function createD1Store(db: D1Database): EllieStore {
+/** The R2 surface the store uses — the structural subset of the
+ * Workers R2Bucket binding (put/get/delete). One bucket serves the
+ * whole platform (electrohire-uploads); Ellie objects live under the
+ * ellie/ prefix. */
+export interface EllieFilesBucket {
+  put(key: string, value: Uint8Array, options?: { httpMetadata?: { contentType?: string } }): Promise<unknown>;
+  get(key: string): Promise<{ arrayBuffer(): Promise<ArrayBuffer> } | null>;
+  delete(key: string): Promise<void>;
+}
+
+export function createD1Store(db: D1Database, files?: EllieFilesBucket): EllieStore {
   return {
     async getSiteKey(key) {
       const row = await db.prepare("SELECT * FROM ellie_site_keys WHERE key = ?").bind(key)
@@ -281,15 +310,48 @@ export function createD1Store(db: D1Database): EllieStore {
       return results.map((r) => ({ id: r.id, sessionId: r.session_id, role: r.role, content: r.content, flags: parseJson<string[]>(r.flags, []), createdAt: r.created_at }));
     },
     async createUpload(row) {
-      // D1 BLOB storage (amended track): bytes go in the `data` column
-      // (NOT NULL in migration 0007; there is no r2_key column).
-      await db.prepare("INSERT INTO ellie_uploads (id, session_id, filename, mime, size, extracted_text, data, created_at) VALUES (?,?,?,?,?,?,?,?)")
-        .bind(row.id, row.sessionId, row.filename, row.mime, row.size, row.extractedText, row.data ?? new Uint8Array(0), row.createdAt).run();
+      // R2 storage swap (migration 0011): with a bucket bound, the
+      // bytes go to R2 under ellie/<session_id>/<upload_id> and the row
+      // records r2_key with an empty `data` BLOB (the column is NOT
+      // NULL). Without a bucket, the original D1 BLOB behavior stands
+      // (local track / fallback) — one interface, two byte stores.
+      const bytes = row.data ?? new Uint8Array(0);
+      let r2Key: string | null = null;
+      let stored: Uint8Array = bytes;
+      if (files && row.data) {
+        r2Key = `ellie/${row.sessionId}/${row.id}`;
+        await files.put(r2Key, bytes, { httpMetadata: { contentType: row.mime } });
+        stored = new Uint8Array(0);
+      }
+      await db.prepare("INSERT INTO ellie_uploads (id, session_id, filename, mime, size, extracted_text, data, r2_key, created_at) VALUES (?,?,?,?,?,?,?,?,?)")
+        .bind(row.id, row.sessionId, row.filename, row.mime, row.size, row.extractedText, stored, r2Key, row.createdAt).run();
     },
     async listUploads(sessionId) {
-      const { results } = await db.prepare("SELECT id, session_id, filename, mime, size, extracted_text, (data IS NOT NULL) AS has_data, created_at FROM ellie_uploads WHERE session_id = ? ORDER BY created_at ASC").bind(sessionId)
-        .all<{ id: string; session_id: string; filename: string; mime: string; size: number; extracted_text: string; has_data: number; created_at: number }>();
-      return results.map((r) => ({ id: r.id, sessionId: r.session_id, r2Key: null, filename: r.filename, mime: r.mime, size: r.size, extractedText: r.extracted_text, hasData: r.has_data === 1, createdAt: r.created_at }));
+      const { results } = await db.prepare("SELECT id, session_id, filename, mime, size, extracted_text, r2_key, length(data) AS data_len, created_at FROM ellie_uploads WHERE session_id = ? ORDER BY created_at ASC").bind(sessionId)
+        .all<{ id: string; session_id: string; filename: string; mime: string; size: number; extracted_text: string; r2_key: string | null; data_len: number; created_at: number }>();
+      return results.map((r) => ({ id: r.id, sessionId: r.session_id, r2Key: r.r2_key ?? null, filename: r.filename, mime: r.mime, size: r.size, extractedText: r.extracted_text, hasData: r.r2_key != null || (r.data_len ?? 0) > 0, createdAt: r.created_at }));
+    },
+    async getUploadData(id) {
+      const r = await db.prepare("SELECT id, session_id, filename, mime, size, extracted_text, data, r2_key, created_at FROM ellie_uploads WHERE id = ?").bind(id)
+        .first<{ id: string; session_id: string; filename: string; mime: string; size: number; extracted_text: string; data: Uint8Array | ArrayBuffer | null; r2_key: string | null; created_at: number }>();
+      if (!r) return null;
+      const row: UploadRow = { id: r.id, sessionId: r.session_id, r2Key: r.r2_key ?? null, filename: r.filename, mime: r.mime, size: r.size, extractedText: r.extracted_text, hasData: r.r2_key != null || (r.data ? (r.data as Uint8Array).byteLength > 0 : false), createdAt: r.created_at };
+      if (r.r2_key) {
+        if (!files) return null; // bytes live in R2 but no bucket is bound here
+        const obj = await files.get(r.r2_key);
+        if (!obj) return null;
+        return { row, data: new Uint8Array(await obj.arrayBuffer()) };
+      }
+      const raw = r.data;
+      const data = raw instanceof Uint8Array ? raw : raw ? new Uint8Array(raw as ArrayBuffer) : new Uint8Array(0);
+      return { row, data };
+    },
+    async deleteUpload(id) {
+      const r = await db.prepare("SELECT r2_key FROM ellie_uploads WHERE id = ?").bind(id).first<{ r2_key: string | null }>();
+      if (!r) return false;
+      if (r.r2_key && files) await files.delete(r.r2_key);
+      await db.prepare("DELETE FROM ellie_uploads WHERE id = ?").bind(id).run();
+      return true;
     },
     async createAnalysis(row) {
       await db.prepare("INSERT INTO ellie_analyses (id, session_id, account_id, brief, status, current_step, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)")
@@ -364,11 +426,12 @@ export function createD1Store(db: D1Database): EllieStore {
  * the seeded in-memory store otherwise (env-seeded site keys locally). */
 export interface EllieStoreEnv {
   DB?: D1Database;
+  FILES?: EllieFilesBucket;
   ELLIE_SITE_KEYS_JSON?: string;
 }
 const memoryBySeed = new Map<string, ReturnType<typeof createMemoryStore>>();
 export function ellieStoreFromEnv(env: EllieStoreEnv): EllieStore {
-  if (env.DB) return createD1Store(env.DB);
+  if (env.DB) return createD1Store(env.DB, env.FILES);
   const seed = env.ELLIE_SITE_KEYS_JSON ?? "";
   if (!memoryBySeed.has(seed)) {
     let siteKeys: SiteKeyRow[] = [];

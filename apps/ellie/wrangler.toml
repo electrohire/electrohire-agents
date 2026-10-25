@@ -4,10 +4,13 @@
 # (electrohire-platform) are committed, so a deploy from this file
 # reproduces the served end state.
 #
-# NO R2 binding: R2 is not enabled on this Cloudflare account (owner
-# dashboard act, outside Phase E). Uploads are stored as D1 BLOBs
-# through the platform Ellie store (2 MB cap) — see
-# packages/platform/src/ellie/store.ts.
+# R2 binding (2026-10-25): R2 is enabled on this account and the one
+# platform bucket electrohire-uploads is bound here as FILES. Upload
+# bytes live in the bucket under ellie/<session_id>/<upload_id>
+# (migration 0011 added ellie_uploads.r2_key); the D1 BLOB path in
+# packages/platform/src/ellie/store.ts remains the no-bucket fallback.
+# The 2 MB upload cap is unchanged — it is a product limit pinned by
+# the frozen Phase E battery, not a storage limit.
 #
 # Secrets are NOT in this file and are placed separately with
 # `wrangler secret put`: OPENROUTER_API_KEY (dedicated platform key,
@@ -22,6 +25,10 @@ routes = [{ pattern = "ellie-beta.electrohire.com", custom_domain = true }]
 binding = "DB"
 database_name = "electrohire-platform"
 database_id = "c7aea331-7159-438c-a957-51632558a3c9"
+
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "electrohire-uploads"
 
 # Static assets: the panel bundle the website-side builder ships into
 # apps/ellie/assets (a stub index.html is committed now). The Worker
