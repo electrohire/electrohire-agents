@@ -13,9 +13,13 @@
  *    path the app BFF uses, gated by ELLIE_INTERNAL_KEY),
  *  - the credential-gated analysis API (shared gate, scope
  *    action:ellie_session, audience = this resource, RFC 8707),
- *  - /panel + /panel-assets/* — the panel shell; the website-side
- *    builder ships the real panel UI as a static bundle into
- *    apps/ellie/assets (a stub index.html is committed there now).
+ *  - /panel + /panel-assets/* — the panel shell; the real panel UI
+ *    ships as a static bundle in apps/ellie/assets (panel/index.html +
+ *    panel-assets/*, copied from the website repo's
+ *    specs/002-ellie-platform/panel bundle, Phase E E-06). The Worker
+ *    serves /panel itself for the framing headers, reading the page
+ *    from the ASSETS binding; the hardcoded stub below remains only
+ *    as a fallback if the bundle is ever missing at runtime.
  *
  * Uploads: stored through the Ellie store — bytes in the platform R2
  * bucket (binding FILES → electrohire-uploads, keys ellie/<session>/
@@ -37,7 +41,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.7.0";
+const ELLIE_VERSION = "0.8.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
@@ -234,7 +238,15 @@ export default {
         return new Response(LOADER_JS, { headers: { "content-type": "text/javascript; charset=utf-8", "cache-control": "public, max-age=300", "content-security-policy": `frame-ancestors ${await frameAncestors(env)}` } });
       }
       if (path === "/panel" && req.method === "GET") {
-        return new Response(PANEL_STUB, { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors ${await frameAncestors(env)}`, "x-frame-options": "SAMEORIGIN" } });
+        // The real panel bundle (apps/ellie/assets/panel/index.html) is
+        // the served page; the Worker wraps it in the framing headers.
+        // PANEL_STUB is only a fallback if the bundle is missing.
+        let html = PANEL_STUB;
+        if (env.ASSETS) {
+          const asset = await env.ASSETS.fetch(new Request(new URL("/panel/index.html", url.origin))).catch(() => null);
+          if (asset && asset.status === 200) html = await asset.text();
+        }
+        return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors ${await frameAncestors(env)}`, "x-frame-options": "SAMEORIGIN" } });
       }
       if (path.startsWith("/panel-assets/") && req.method === "GET") {
         if (env.ASSETS) {
@@ -263,7 +275,10 @@ export default {
         const chips = ellie.starterPromptsFor().map((s) => ({ label: s.label, prompt: s.prompt }));
         return json({
           enabled: true,
-          panelUrl: PANEL_URL,
+          // The panel reads its site key from its own URL (the site-key
+          // protocol the panel bundle implements), so the URL handed to
+          // the loader carries the key it was configured with.
+          panelUrl: `${PANEL_URL}?siteKey=${encodeURIComponent(siteKey)}`,
           origins: record.origins,
           allowedOrigins: record.origins,
           surface: "beta",

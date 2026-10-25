@@ -30,10 +30,11 @@ database_id = "c7aea331-7159-438c-a957-51632558a3c9"
 binding = "FILES"
 bucket_name = "electrohire-uploads"
 
-# Static assets: the panel bundle the website-side builder ships into
-# apps/ellie/assets (a stub index.html is committed now). The Worker
-# serves /panel itself (for the framing headers) and /panel-assets/*
-# from this binding.
+# Static assets: the real panel bundle in apps/ellie/assets
+# (panel/index.html + panel-assets/*, copied from the website repo's
+# specs/002-ellie-platform/panel bundle). The Worker serves /panel
+# itself (for the framing headers, reading the page from this binding)
+# and /panel-assets/* from this binding.
 [assets]
 directory = "./assets"
 binding = "ASSETS"
