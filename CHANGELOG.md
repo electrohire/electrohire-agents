@@ -7,6 +7,42 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [0.7.0] - 2026-10-25
+
+### Changed
+
+- Ellie uploads moved from D1 BLOBs to R2 (the storage swap the Phase E
+  store interface was shaped for): R2 was enabled on the account and
+  the one platform bucket `electrohire-uploads` created; the Ellie
+  Worker binds it as `FILES`. New uploads put their bytes in the
+  bucket under `ellie/<session_id>/<upload_id>` and record the key in
+  `ellie_uploads.r2_key` (website migration 0011); rows written before
+  the swap keep their bytes in the `data` BLOB and still read. With no
+  bucket bound, the store's D1 behavior is unchanged (local track /
+  fallback). The 2 MB upload cap is **unchanged** — the frozen Phase E
+  battery pins it; it stands as a product limit, not a storage limit.
+
+### Added
+
+- Session-authorized upload read-back routes on the Ellie Worker:
+  `GET /api/chat/sessions/:id/uploads` (list),
+  `GET /api/chat/sessions/:id/uploads/:uploadId` (the bytes), and
+  `DELETE /api/chat/sessions/:id/uploads/:uploadId` (bytes + row +
+  session-state note), behind the same session authorization as the
+  chat POST routes. Store/engine gained `getUploadData` /
+  `deleteUpload` / `getUpload` / `removeUpload` to match.
+- Battery `tests/ellie-r2.test.mjs`: the D1 store against the real
+  0008+0011 schema with a stand-in bucket — R2 round-trip, legacy BLOB
+  read-back, no-bucket fallback, and delete semantics.
+- Frozen-battery supersession (recorded, file untouched, per the C3
+  precedent): `tests/frozen/ellie.test.mjs` runs 18/19 — its "D1
+  store runs against the REAL migration 0007 schema" case embeds the
+  pre-0011 schema verbatim, and the store's upload insert now names
+  the `r2_key` column 0011 adds, so that one case fails on the missing
+  column. The store requires migration 0011 (applied to the platform
+  D1 in this change, before the Worker deploy); the frozen file is
+  never edited.
+
 ## [0.6.0] - 2026-10-25
 
 ### Added

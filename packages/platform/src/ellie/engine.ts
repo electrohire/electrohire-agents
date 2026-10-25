@@ -69,9 +69,15 @@ export const ACCEPTED_UPLOAD_MIMES: Record<string, string[]> = {
   csv: ["text/csv", "application/vnd.ms-excel"], png: ["image/png"], jpg: ["image/jpeg"],
   jpeg: ["image/jpeg"], webp: ["image/webp"],
 };
-/** Amended cap (coordinator, 2026-10-25): uploads are stored as a D1
- * BLOB, so the cap is 2 MB — above it the upload is refused plainly,
- * naming the limit (E-03 discipline). */
+/** Amended cap (coordinator, 2026-10-25): uploads were stored as a D1
+ * BLOB, so the cap was set at 2 MB — above it the upload is refused
+ * plainly, naming the limit (E-03 discipline). Storage moved to R2
+ * behind the store interface on 2026-10-25 (migration 0011), but the
+ * cap itself is RETAINED unchanged: the frozen Phase E battery pins
+ * UPLOAD_MAX_BYTES at 2 MB, so the limit now stands as a product limit
+ * on what an intake conversation carries, not a storage limit.
+ * Raising it is a product decision taken with a battery amendment,
+ * never a silent side effect of a storage swap. */
 export const UPLOAD_MAX_BYTES = 2 * 1024 * 1024;
 export const IMAGE_TYPES = new Set(["png", "jpg", "jpeg", "webp"]);
 
@@ -242,6 +248,36 @@ export function createEngine(opts: EngineOpts) {
     await audit({ eventType: "ellie.upload", action: "upload.create", actorAccountId: s.accountId, detail: { sessionId, filename: input.filename, size: input.size, needsVision } });
     const { data: _bytes, ...pub } = row;
     return pub;
+  }
+
+  /** Fetch one upload of THIS session, bytes included (R2-backed rows
+   * read from the bucket; legacy rows from the D1 BLOB). Ownership is
+   * by construction: the upload is looked up inside the session's own
+   * upload list, never by bare id across sessions. */
+  async function getUpload(sessionId: string, uploadId: string) {
+    await loadSession(sessionId);
+    const mine = await store.listUploads(sessionId);
+    if (!mine.some((u) => u.id === uploadId)) return null;
+    return store.getUploadData(uploadId);
+  }
+
+  /** Remove one upload of THIS session: the stored bytes (R2 object or
+   * D1 BLOB) and the row go away together, and the session state's
+   * upload note (the brief's view) drops its first matching entry. */
+  async function removeUpload(sessionId: string, uploadId: string, ctx: ActorCtx = {}) {
+    const s = await loadSession(sessionId);
+    const mine = await store.listUploads(sessionId);
+    const target = mine.find((u) => u.id === uploadId);
+    if (!target) return false;
+    const gone = await store.deleteUpload(uploadId);
+    if (gone) {
+      const state = stateOf(s);
+      const i = state.uploads.findIndex((u) => u.filename === target.filename);
+      if (i >= 0) state.uploads.splice(i, 1);
+      await store.updateSession(sessionId, state as unknown as Record<string, unknown>, now());
+      await audit({ eventType: "ellie.upload", action: "upload.delete", actorAccountId: s.accountId ?? ctx.accountId, detail: { sessionId, uploadId, filename: target.filename } });
+    }
+    return gone;
   }
 
   async function finalize(sessionId: string, ctx: ActorCtx = {}) {
@@ -439,7 +475,7 @@ export function createEngine(opts: EngineOpts) {
   }
 
   return {
-    createSession, verifySessionToken, handleMessage, registerUpload,
+    createSession, verifySessionToken, handleMessage, registerUpload, getUpload, removeUpload,
     finalize, startAnalysis, advanceAnalysis, getAnalysis, getAnalysisAdvancing,
     editOutput, approveOutput, escalate, planOutline,
   };

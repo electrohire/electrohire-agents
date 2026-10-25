@@ -13,6 +13,7 @@ import { createEngine, type EllieEngine } from "./engine.ts";
 
 export interface EllieEnv {
   DB?: D1Database;
+  FILES?: import("./store.ts").EllieFilesBucket;
   OPENROUTER_API_KEY?: string;
   ELLIE_MODELS_TEXT?: string;
   ELLIE_MODELS_VISION?: string;
