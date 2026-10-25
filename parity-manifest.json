@@ -55,6 +55,15 @@
         "reason": "Phase C1: service categories and pages from the same mirrored content document."
       },
       {
+        "name": "GET /v1/ellie/analyses/{id}",
+        "kind": "route",
+        "method": "GET",
+        "path": "/v1/ellie/analyses/{id}",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase E (E-02/E-08): Ellie analysis status/result; advances one generation step per read while generating; only the owning account's credential may read it."
+      },
+      {
         "name": "GET /v1/faq",
         "kind": "route",
         "method": "GET",
@@ -80,6 +89,15 @@
         "file": "apps/api/src/index.ts",
         "state": "exposed",
         "reason": "Phase C1: fees, pod presentation (no pod price — deliberately absent, as on the site), UK Hub tiers; all mirrored content."
+      },
+      {
+        "name": "POST /v1/actions/ellie-session",
+        "kind": "route",
+        "method": "POST",
+        "path": "/v1/actions/ellie-session",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase E (E-08/C-13): REST action mirroring the Ellie analysis start — brief or Ellie session id in, handle out; credential required, scope action:ellie_session, shared gate, cross-user bound."
       },
       {
         "name": "POST /v1/actions/newsletter-subscribe",
@@ -128,6 +146,20 @@
       }
     ],
     "mcp": [
+      {
+        "name": "electrohire_ellie_analysis",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase E (E-02/E-08): MCP tool for Ellie analysis status/result by handle; action-scoped, cross-user bound to the authorizing account."
+      },
+      {
+        "name": "electrohire_ellie_session",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "Phase E (E-08/C-13): MCP action tool mirroring the REST Ellie-session action; scope checked in dispatch before execution; credential required."
+      },
       {
         "name": "electrohire_estimate_cost",
         "kind": "tool",

@@ -18,9 +18,11 @@
  * a consent context: injected content cannot reach the choke point as an
  * instruction.
  *
- * Ellie actions are NOT offered: Phase E is gated (no builder named), so
- * `action:ellie_session` is absent from OAUTH_OFFERED_SCOPES and any
- * request for it is refused at authorize time.
+ * Ellie actions ARE offered as of Phase E (un-gated 2026-10-25, when the
+ * owner named this program as Phase E's builder): `action:ellie_session`
+ * is in OAUTH_OFFERED_SCOPES and the Ellie resource is a protected
+ * resource like the API and MCP resources. (Before 2026-10-25 Phase E
+ * was gated and the scope was deliberately absent.)
  *
  * Local track: clients, requests and codes live in memory here (codes and
  * tokens hashed at rest); access tokens themselves are registered into
@@ -33,14 +35,16 @@ import type { KeyStore } from "./apikeys.ts";
 export const RESOURCES = {
   api: "https://api-beta.electrohire.com",
   mcp: "https://mcp-beta.electrohire.com",
+  ellie: "https://ellie-beta.electrohire.com",
 } as const;
-export const RESOURCE_LIST: string[] = [RESOURCES.api, RESOURCES.mcp];
+export const RESOURCE_LIST: string[] = [RESOURCES.api, RESOURCES.mcp, RESOURCES.ellie];
 
-/** Scopes an OAuth client may be granted. Read scopes plus the two C-13
- * action scopes. Ellie is deliberately absent (Phase E gated). */
+/** Scopes an OAuth client may be granted. Read scopes plus the action
+ * scopes. `action:ellie_session` joined on 2026-10-25 with Phase E
+ * (before that date it was deliberately absent — Phase E was gated). */
 export const OAUTH_OFFERED_SCOPES = [
   "read:content", "read:blog", "read:tools",
-  "action:newsletter_subscribe", "action:support_ticket",
+  "action:newsletter_subscribe", "action:support_ticket", "action:ellie_session",
 ];
 
 export const ACCESS_TOKEN_TTL_MS = 3600 * 1000; // 1 hour
@@ -120,7 +124,7 @@ export function createOAuthFlow(opts: { keyStore: KeyStore; now?: () => number }
     const scopes = [...new Set(input.scope ?? [])];
     if (scopes.length === 0) throw new Error("Scope required: name at least one scope.");
     for (const s of scopes) {
-      if (!OAUTH_OFFERED_SCOPES.includes(s)) throw new Error(`Scope not offered: ${s}. Offered scopes are the read scopes and the newsletter / support-ticket action scopes; Ellie actions are not offered (Phase E is gated).`);
+      if (!OAUTH_OFFERED_SCOPES.includes(s)) throw new Error(`Scope not offered: ${s}. Offered scopes are the read scopes and the newsletter / support-ticket / Ellie action scopes.`);
       if (!client.scopes.includes(s)) throw new Error(`Scope refused: this client was not registered for ${s}.`);
     }
     const resource = input.resource ?? RESOURCES.api;

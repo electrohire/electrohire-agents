@@ -53,18 +53,27 @@ export function scopeForMcpTool(name: string): string {
   // MCP dispatch check refuses a wrongly-scoped credential before execution.
   if (name === "electrohire_newsletter_subscribe") return "action:newsletter_subscribe";
   if (name === "electrohire_support_ticket") return "action:support_ticket";
+  // Phase E (2026-10-25): the Ellie tools are action tools under the same rule.
+  if (name === "electrohire_ellie_session" || name === "electrohire_ellie_analysis") return "action:ellie_session";
   if (["electrohire_estimate_cost", "electrohire_scoping_checklist", "electrohire_timeline_calculator"].includes(name)) return "read:tools";
   return "read:content";
 }
-/** Scope a credential must hold for a REST action route (Phase C3, C-13). */
+/** Scope a credential must hold for a REST action route (Phase C3, C-13;
+ * Phase E routes added 2026-10-25). */
 export function scopeForApiAction(path: string): string | null {
   if (path === "/v1/actions/newsletter-subscribe") return "action:newsletter_subscribe";
   if (path === "/v1/actions/support-ticket") return "action:support_ticket";
+  // Phase E: the API Worker's Ellie action + analysis routes, and the
+  // Ellie Worker's own analysis routes — all one action scope.
+  if (path === "/v1/actions/ellie-session") return "action:ellie_session";
+  if (path.startsWith("/v1/ellie/analyses")) return "action:ellie_session";
+  if (path === "/api/analyses" || path.startsWith("/api/analyses/")) return "action:ellie_session";
   return null;
 }
-/** The MCP action tools (Phase C3): binding actions — a credential is
- * REQUIRED (C-15 layers 3+4); there is no anonymous action call. */
-export const MCP_ACTION_TOOLS = new Set(["electrohire_newsletter_subscribe", "electrohire_support_ticket"]);
+/** The MCP action tools (Phase C3; Ellie tools added Phase E 2026-10-25):
+ * binding actions — a credential is REQUIRED (C-15 layers 3+4); there is
+ * no anonymous action call. */
+export const MCP_ACTION_TOOLS = new Set(["electrohire_newsletter_subscribe", "electrohire_support_ticket", "electrohire_ellie_session", "electrohire_ellie_analysis"]);
 
 /* ---- C-12 / CMP-10: the AI provider policy as data (same table as the
  * dashboard package — OpenRouter only, data_collection pinned to deny,

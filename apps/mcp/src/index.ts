@@ -6,7 +6,7 @@ import {
   RateLimiter, globalKillOn, disabledTools, logRequest, identityLabel,
   screenInput, screenOutput, LocalAuditSink,
   extractCredential, authorizeCredential, storeFromEnv, scopeForMcpTool,
-  protectedResourceMetadata, RESOURCES, MCP_ACTION_TOOLS, createActionStore,
+  protectedResourceMetadata, RESOURCES, MCP_ACTION_TOOLS, createActionStore, ellie,
   type ContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
@@ -20,9 +20,9 @@ import {
  *
  * Keep MCP_SERVER_VERSION in sync with this package's package.json version.
  */
-const MCP_SERVER_VERSION = "0.5.0";
+const MCP_SERVER_VERSION = "0.6.0";
 
-type Env = ContentEnv & GuardEnv & KeysEnv;
+type Env = ContentEnv & GuardEnv & KeysEnv & ellie.EllieEnv;
 type Cred = { kind: "api_key"; secret: string } | { kind: "oauth_double"; token: string } | { kind: "oauth_token"; token: string } | null;
 const AUTH_ISSUER = "https://auth-beta.electrohire.com";
 /** C-13 action store (LOCAL stand-in mirroring the website data layer). */
@@ -187,8 +187,31 @@ function createServer(env: Env, cred: Cred = null): McpServer {
     return { id: t.id, status: t.status, subject: t.subject };
   }));
 
-  // NOTE (Phase E gated): no Ellie tool is registered. Ellie session /
-  // analysis actions ship only when Phase E's backend exists (C-13/E-06).
+  // Phase E (2026-10-25): the Ellie backend exists, so the Ellie action
+  // tools ship — through guarded() like every action tool: credential
+  // required, scope (action:ellie_session) checked BEFORE execution,
+  // audience-bound to this resource, and the engine's cross-user check
+  // (E-08) binds results to the authorizing account.
+  server.registerTool("electrohire_ellie_session", {
+    title: "Start an Ellie analysis",
+    description: "Start an Ellie analysis from a brief or an existing Ellie session id (action — requires the action:ellie_session scope). Returns a handle immediately; collect the result with electrohire_ellie_analysis. Outputs are drafts until a named engineer approves them.",
+    inputSchema: { brief: z.string().optional().describe("Project brief to analyze."), sessionId: z.string().optional().describe("Existing Ellie session id to analyze.") },
+  }, async (args) => g("electrohire_ellie_session", args, async () => {
+    const gate = (globalThis as any).__ehGate;
+    const a = args as { brief?: string; sessionId?: string };
+    const engine = ellie.ellieEngineFromEnv(env);
+    return engine.startAnalysis({ brief: a.brief, sessionId: a.sessionId }, { accountId: gate?.accountId });
+  }));
+
+  server.registerTool("electrohire_ellie_analysis", {
+    title: "Get an Ellie analysis",
+    description: "Status and sections of an Ellie analysis by id (action — requires the action:ellie_session scope). Advances one generation step per call while generating. Only the owning account's credential may read it.",
+    inputSchema: { analysisId: z.string().describe("The analysis handle returned by electrohire_ellie_session.") },
+  }, async (args) => g("electrohire_ellie_analysis", args, async () => {
+    const gate = (globalThis as any).__ehGate;
+    const engine = ellie.ellieEngineFromEnv(env);
+    return engine.getAnalysisAdvancing((args as { analysisId: string }).analysisId, { accountId: gate?.accountId });
+  }));
 
   return server;
 }

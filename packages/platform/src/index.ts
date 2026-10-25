@@ -5,3 +5,4 @@ export * from "./tools.ts";
 export * from "./apikeys.ts";
 export * from "./oauth.ts";
 export * from "./actions.ts";
+export * as ellie from "./ellie/index.ts";
