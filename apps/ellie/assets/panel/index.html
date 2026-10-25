@@ -1,6 +1,63 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Ellie — ElectroHire AI technical analyst</title></head>
-<body><main><h1>Ellie</h1>
-<p>Hi, I'm Ellie — I'm an AI technical analyst at ElectroHire, not a person. The full chat panel ships with the website-side panel bundle into this app's assets; this stub keeps the route and its framing posture live in the meantime. You can talk to a human at any time through ElectroHire support.</p>
-</main></body></html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Ellie — ElectroHire AI Analyst</title>
+<link rel="stylesheet" href="/panel-assets/ellie.css" />
+<link rel="stylesheet" href="/panel-assets/ellie-aurora.css" />
+<link rel="stylesheet" href="/panel-assets/panel.css" />
+</head>
+<body>
+<main class="ea-panel ellie-panel" aria-label="Ellie chat">
+  <header class="ep-head">
+    <span class="ellie-avatar" aria-hidden="true"><span class="ep-mark">E</span></span>
+    <div class="ep-title">
+      <strong>Ellie</strong>
+      <span>AI Technical Analyst · ElectroHire</span>
+    </div>
+    <a class="ep-human" href="#human" id="talk-human">Talk to a human</a>
+  </header>
+
+  <section class="ep-outline" aria-label="Plan outline">
+    <p class="ep-outline-title">Your plan — fills in as we talk</p>
+    <ul id="outline">
+      <li data-section="requirements">Requirements <span class="ep-state">Waiting</span></li>
+      <li data-section="architecture">Architecture <span class="ep-state">Waiting</span></li>
+      <li data-section="bom">BOM draft <span class="ep-state">Waiting</span></li>
+      <li data-section="cost_estimate">Cost estimate <span class="ep-state">Waiting</span></li>
+      <li data-section="timeline">Timeline <span class="ep-state">Waiting</span></li>
+      <li data-section="compliance">Compliance roadmap <span class="ep-state">Waiting</span></li>
+    </ul>
+  </section>
+
+  <section class="ep-messages" id="messages" aria-live="polite" aria-label="Conversation"></section>
+
+  <section class="ep-starters" id="starters" aria-label="Starter prompts">
+    <p>Start with an example — tap one to pre-fill your first message:</p>
+    <button type="button" class="ep-chip" data-starter="A battery-powered sensor that reports every hour">A battery-powered sensor that reports every hour</button>
+    <button type="button" class="ep-chip" data-starter="Firmware for a board we already have">Firmware for a board we already have</button>
+    <button type="button" class="ep-chip" data-starter="A motor controller for a small robot">A motor controller for a small robot</button>
+  </section>
+
+  <section class="ep-plan" id="plan" hidden aria-label="Plan">
+    <h2>Your plan</h2>
+    <p class="ep-note">Every section is an AI draft until a named ElectroHire engineer approves that version.</p>
+    <div id="plan-sections"></div>
+  </section>
+
+  <p class="ep-status" id="status" role="status"></p>
+
+  <form class="ep-composer" id="composer">
+    <label class="ep-attach">
+      <span aria-hidden="true">📎</span><span class="ep-sr">Attach a document or image (up to 2 MB)</span>
+      <input type="file" id="file" hidden accept=".pdf,.txt,.md,.csv,.png,.jpg,.jpeg,.webp,.doc,.docx" />
+    </label>
+    <textarea id="input" rows="2" placeholder="Describe what you are building…" aria-label="Message Ellie"></textarea>
+    <button type="submit" class="ep-send">Send</button>
+  </form>
+  <p class="ep-foot" id="human">Talk to a human is always available above — it files a real support case with this conversation attached. No response time is promised.</p>
+</main>
+<script src="/panel-assets/panel.js" defer></script>
+</body>
+</html>

@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [0.8.0] - 2026-10-25
+
+### Fixed
+
+- The Ellie panel is no longer a stub. `GET /panel` on the Ellie
+  Worker served a hardcoded 548-byte placeholder page (the
+  `PANEL_STUB` constant) because the real panel bundle built in
+  Phase E (website repo, `specs/002-ellie-platform/panel/`) was
+  never copied into `apps/ellie/assets`. The bundle is now committed
+  there (`panel/index.html` + `panel-assets/{panel.js,panel.css,
+  ellie.css,ellie-aurora.css}`, byte-identical to the website-repo
+  source) and the Worker serves it at `/panel` with the same framing
+  headers; the stub remains only as a fallback if the bundle is
+  missing at runtime. `/panel-assets/*` resolves through the ASSETS
+  binding as designed. The enabled `/api/widget-config` response now
+  carries the site key in its `panelUrl` (`/panel?siteKey=…`), which
+  is the protocol the panel bundle reads its key from. Pinned by the
+  new (non-frozen) `tests/panel.test.mjs`, which asserts the served
+  content — not just the status — so a placeholder can never pass
+  as the panel again.
+
 ## [0.7.0] - 2026-10-25
 
 ### Changed
