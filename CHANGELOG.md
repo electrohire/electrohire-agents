@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [Unreleased]
+
+### Changed
+
+- Ellie runs on a free model for now (WS-15). The model choice is
+  configuration, not code: the active ordered lists
+  (`ELLIE_MODELS_TEXT` / `ELLIE_MODELS_VISION` in each Worker's
+  wrangler.toml) are now the free models
+  `google/gemma-4-31b-it:free` (primary) and
+  `google/gemma-4-26b-a4b-it:free` (fallback) — the Gemma 4 free
+  family is multimodal, so one list serves text and vision. The paid
+  models Ellie ran on before stay listed
+  (`ELLIE_MODELS_PAID_TEXT` / `ELLIE_MODELS_PAID_VISION`) but are
+  never called as a silent fallback: a paid call happens only if
+  `ELLIE_ALLOW_PAID_FALLBACK` is deliberately set to `"true"`. Every
+  request body still pins `data_collection: deny`, unchanged.
+- Per-user daily cap on the free route
+  (`ELLIE_FREE_DAILY_USER_CAP`, default 30 model calls per user per
+  UTC day, counted from the existing session/message/output
+  records). When a user reaches the cap, or when every free route is
+  unavailable, Ellie answers in the conversation with a
+  plain-language free-tier limit message — it says the limit is a
+  free-plan limit, when it resets (midnight UTC), that the
+  conversation so far is saved, and how to reach a human — instead
+  of an opaque gateway error. Analysis generation paused by the cap
+  or an outage stays in "generating" and resumes on the next read
+  after the reset.
+- Ellie Worker version 0.12.0. Not deployed with this change.
+
 ## [0.11.0] - 2026-10-26
 
 ### Fixed

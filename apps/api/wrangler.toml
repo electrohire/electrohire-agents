@@ -25,6 +25,20 @@ CONTENT_SOURCE_URL = "https://electrohire-website-staging.pages.dev/content/v1.j
 # with `wrangler secret put`, never a value in this file); until it is
 # placed, analysis generation reports blocked_model_not_configured
 # honestly instead of faking output.
-ELLIE_MODELS_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
-ELLIE_MODELS_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+# WS-15 (2026-10-26): the ACTIVE lists are the free models, in order
+# (primary first). Both Gemma 4 free models are multimodal, so the
+# text and vision lists are the same. Every request still pins
+# data_collection: deny (see packages/platform/src/ellie/openrouter.ts).
+ELLIE_MODELS_TEXT = "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free"
+ELLIE_MODELS_VISION = "google/gemma-4-31b-it:free,google/gemma-4-26b-a4b-it:free"
+# Paid models are LISTED here only, so a future explicit decision can
+# enable them. They are never called as a silent fallback: paid calls
+# happen only when ELLIE_ALLOW_PAID_FALLBACK is set to "true" by a
+# deliberate configuration change (it is not set here).
+ELLIE_MODELS_PAID_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
+ELLIE_MODELS_PAID_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+# Per-user daily cap on free-route model calls (WS-15). When a user
+# reaches it, Ellie answers with the plain-language free-tier limit
+# message (resets at midnight UTC) instead of an error.
+ELLIE_FREE_DAILY_USER_CAP = "30"
 ELLIE_DAILY_SPEND_CAP_USD = "5"
