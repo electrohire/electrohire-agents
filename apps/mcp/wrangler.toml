@@ -18,7 +18,7 @@ database_id = "c7aea331-7159-438c-a957-51632558a3c9"
 [vars]
 # Content mirror source (C-01): the website build emits this document.
 # Local dev overrides with CONTENT_JSON via wrangler --var / .dev.vars.
-CONTENT_SOURCE_URL = "https://electrohire-website-staging.pages.dev/content/v1.json"
+CONTENT_SOURCE_URL = "https://beta.electrohire.com/content/v1.json"
 # Phase E: the Ellie MCP tools (electrohire_ellie_session /
 # electrohire_ellie_analysis) run the shared Ellie engine against the
 # same D1 binding. OPENROUTER_API_KEY is a SECRET (placed separately
