@@ -418,6 +418,16 @@ export function createEngine(opts: EngineOpts) {
   async function getAnalysis(analysisId: string, ctx: ActorCtx = {}) {
     return presentAnalysis(analysisId, ctx);
   }
+  /** The panel's plan read: the session's latest analysis, advancing
+   * one generation step per read while generating (same semantics as
+   * getAnalysisAdvancing, addressed by session instead of by id). The
+   * caller authorizes the session first (session token / internal). */
+  async function getAnalysisBySession(sessionId: string, ctx: ActorCtx = {}) {
+    const a = await store.getAnalysisBySession(sessionId);
+    if (!a) throw new EllieError("not_found", "No analysis exists for this session yet.");
+    if (a.status === "generating") return advanceAnalysis(a.id, ctx);
+    return presentAnalysis(a.id, ctx);
+  }
   /** GET semantics for the Workers: one generation step per read while generating. */
   async function getAnalysisAdvancing(analysisId: string, ctx: ActorCtx = {}) {
     const a = await store.getAnalysis(analysisId);
@@ -476,7 +486,7 @@ export function createEngine(opts: EngineOpts) {
 
   return {
     createSession, verifySessionToken, handleMessage, registerUpload, getUpload, removeUpload,
-    finalize, startAnalysis, advanceAnalysis, getAnalysis, getAnalysisAdvancing,
+    finalize, startAnalysis, advanceAnalysis, getAnalysis, getAnalysisAdvancing, getAnalysisBySession,
     editOutput, approveOutput, escalate, planOutline,
   };
 }

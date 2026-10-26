@@ -31,6 +31,7 @@ body { margin: 0; background: transparent; font-family: var(--ea-font, system-ui
 .ep-attach { cursor: pointer; font-size: 1.1rem; padding: .4rem; }
 .ep-send { background: var(--ea-grad); color: #fff; border: none; border-radius: var(--ea-r-btn, 999px); padding: .6rem 1.1rem; font: inherit; font-weight: 700; cursor: pointer; box-shadow: var(--ea-glow); }
 .ep-foot { padding: 0 1rem .7rem; margin: 0; }
+.ep-turnstile { padding: 0 1rem .5rem; min-height: 0; }
 .ep-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
 
 [hidden] { display: none !important; }
