@@ -1,37 +1,81 @@
-/* Ellie panel layout — Phase E. Uses the Aurora design tokens (--ea-*)
- * from ellie-aurora.css and the launcher/mark styles from ellie.css,
- * both copied from the production design kit (see COPY-LOG.md). */
-body { margin: 0; background: transparent; font-family: var(--ea-font, system-ui, sans-serif); }
-.ellie-panel { display: flex; flex-direction: column; width: 100%; height: 100vh; max-height: 100vh; border-radius: 0; }
-@media (min-width: 480px) { .ellie-panel { border-radius: var(--ea-r-panel, 28px); } }
-.ep-head { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; border-bottom: 1px solid var(--ea-line); background: var(--ea-glass-strong); }
-.ep-mark { color: #fff; font-weight: 800; font-size: 1.05rem; }
-.ep-title { display: flex; flex-direction: column; flex: 1; line-height: 1.25; }
+/* Ellie panel layout — WS-8 restyle (2026-10-26) to the ElectroHire
+ * website design system (website PR #35 tokens, packages/ui):
+ * primary #207CF9, secondary #1e88e5, amber #f59e0b; Poppins (body) /
+ * Sora (display) / Outfit (accent); dark surfaces ink #0a0e13, panel
+ * #10161e, panel-2 #151e29, line #223041, paper #e8eef5, fog #9fb0c3.
+ * The site fonts are self-hosted on the website origin and cannot be
+ * loaded cross-origin under the panel CSP (font-src 'self'), so the
+ * stack names them first and falls back to the system stack — the
+ * panel picks the brand faces up wherever they are available and
+ * stays fully legible without them. Layout hooks (.ep-*) and the
+ * behaviour contract are unchanged from the Phase E bundle. */
+.ea-panel[data-theme="dark"], .ea-panel, .ea-scope, .ellie-panel {
+  --ea-bg: #0a0e13;
+  --ea-glass: rgba(16, 22, 30, .88);
+  --ea-glass-strong: #151e29;
+  --ea-glass-edge: rgba(255, 255, 255, .09);
+  --ea-line: #223041;
+  --ea-ink: #e8eef5;
+  --ea-ink-strong: #ffffff;
+  --ea-ink-2: #9fb0c3;
+  --ea-ink-3: #9fb0c3;
+  --ea-user: #207cf9;
+  --ea-user-ink: #ffffff;
+  --ea-accent: #207cf9;
+  --ea-accent-2: #1e88e5;
+  --ea-accent-ink: #8fb8ff;
+  --ea-accent-soft: rgba(32, 124, 249, .16);
+  --ea-grad: linear-gradient(135deg, #207cf9 0%, #1e88e5 100%);
+  --ea-glow: 0 6px 16px rgba(32, 124, 249, .34);
+  --ea-spark: #f59e0b;
+  --ea-r-panel: 16px;
+  --ea-r-card: 14px;
+  --ea-r-bubble: 16px;
+  --ea-r-chip: 12px;
+  --ea-r-field: 10px;
+  --ea-shadow-card: 0 1px 2px rgba(0, 0, 0, .25), 0 8px 22px rgba(0, 0, 0, .22);
+  --ea-font: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-family: var(--ea-font);
+  color: var(--ea-ink);
+  background: var(--ea-bg);
+}
+body { margin: 0; background: transparent; font-family: "Poppins", system-ui, -apple-system, "Segoe UI", sans-serif; }
+.ellie-panel { display: flex; flex-direction: column; width: 100%; height: 100vh; height: 100dvh; max-height: 100dvh; border-radius: 0; overflow: hidden; }
+@media (min-width: 481px) { .ellie-panel { border-radius: var(--ea-r-panel, 16px); } }
+.ep-head { display: flex; align-items: center; gap: .6rem; padding: .8rem 1rem; padding-top: calc(.8rem + env(safe-area-inset-top, 0px)); border-bottom: 1px solid var(--ea-line); background: var(--ea-glass-strong); }
+.ep-head .ellie-avatar { width: 40px; height: 40px; }
+.ep-title { display: flex; flex-direction: column; flex: 1; line-height: 1.25; min-width: 0; }
+.ep-title strong { font-family: "Sora", "Poppins", system-ui, sans-serif; }
 .ep-title span { font-size: .78rem; color: var(--ea-ink-2); }
-.ep-human { font-size: .82rem; font-weight: 600; color: var(--ea-accent-ink); text-decoration: none; border: 1px solid var(--ea-line); border-radius: 999px; padding: .35rem .7rem; background: var(--ea-accent-soft); white-space: nowrap; }
+.ep-human { font-size: .82rem; font-weight: 600; font-family: "Outfit", "Poppins", system-ui, sans-serif; color: var(--ea-accent-ink); text-decoration: none; border: 1px solid var(--ea-line); border-radius: 999px; padding: .45rem .7rem; background: var(--ea-accent-soft); white-space: nowrap; min-height: 44px; display: inline-flex; align-items: center; box-sizing: border-box; }
 .ep-outline { padding: .6rem 1rem; border-bottom: 1px solid var(--ea-line); background: var(--ea-glass); }
 .ep-outline-title { margin: 0 0 .35rem; font-size: .78rem; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ea-ink-3); }
 .ep-outline ul { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: 1fr 1fr; gap: .15rem .8rem; font-size: .82rem; }
-.ep-state { float: right; color: var(--ea-ink-3); font-size: .76rem; }
+@media (max-width: 360px) { .ep-outline ul { grid-template-columns: 1fr; } }
+.ep-state { float: right; color: var(--ea-spark, #f59e0b); font-size: .76rem; }
 .ep-messages { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: .6rem; }
-.ep-msg { max-width: 85%; padding: .6rem .8rem; border-radius: var(--ea-r-bubble, 18px); background: var(--ea-glass-strong); box-shadow: var(--ea-shadow-card); white-space: pre-wrap; font-size: .92rem; line-height: 1.45; }
+.ep-msg { max-width: 85%; padding: .6rem .8rem; border-radius: var(--ea-r-bubble, 16px); background: var(--ea-glass-strong); box-shadow: var(--ea-shadow-card); white-space: pre-wrap; overflow-wrap: break-word; font-size: .92rem; line-height: 1.45; }
 .ep-msg-user { align-self: flex-end; background: var(--ea-user); color: var(--ea-user-ink); }
 .ep-msg-label { display: block; font-size: .7rem; font-weight: 700; letter-spacing: .05em; text-transform: uppercase; opacity: .65; margin-bottom: .25rem; }
 .ep-starters { padding: 0 1rem .6rem; display: flex; flex-direction: column; gap: .4rem; }
 .ep-starters p { margin: 0; font-size: .82rem; color: var(--ea-ink-2); }
-.ep-chip { text-align: left; border: 1px solid var(--ea-line); background: var(--ea-glass-strong); border-radius: var(--ea-r-chip, 16px); padding: .5rem .7rem; font: inherit; font-size: .86rem; cursor: pointer; }
+.ep-chip { text-align: left; border: 1px solid var(--ea-line); background: var(--ea-glass-strong); color: var(--ea-ink); border-radius: var(--ea-r-chip, 12px); padding: .55rem .7rem; font: inherit; font-size: .86rem; cursor: pointer; min-height: 44px; }
 .ep-chip:hover { border-color: var(--ea-accent); }
 .ep-plan { padding: 0 1rem .8rem; }
-.ep-plan details { border: 1px solid var(--ea-line); border-radius: var(--ea-r-card, 18px); padding: .5rem .7rem; margin-bottom: .4rem; background: var(--ea-glass-strong); }
-.ep-tag { font-size: .72rem; font-weight: 700; border: 1px solid var(--ea-line); border-radius: 999px; padding: .1rem .5rem; }
+.ep-plan h2 { font-family: "Sora", "Poppins", system-ui, sans-serif; }
+.ep-plan details { border: 1px solid var(--ea-line); border-radius: var(--ea-r-card, 14px); padding: .5rem .7rem; margin-bottom: .4rem; background: var(--ea-glass-strong); overflow-wrap: break-word; }
+.ep-tag { font-size: .72rem; font-weight: 700; border: 1px solid var(--ea-spark, #f59e0b); color: var(--ea-spark, #f59e0b); border-radius: 999px; padding: .1rem .5rem; white-space: nowrap; }
 .ep-note, .ep-foot { font-size: .78rem; color: var(--ea-ink-3); }
 .ep-status { padding: 0 1rem; font-size: .85rem; min-height: 1.2em; }
-.ep-composer { display: flex; gap: .5rem; align-items: flex-end; padding: .7rem 1rem; border-top: 1px solid var(--ea-line); background: var(--ea-glass-strong); }
-.ep-composer textarea { flex: 1; font: inherit; border: 1px solid var(--ea-line); border-radius: var(--ea-r-field, 12px); padding: .55rem .7rem; resize: none; }
-.ep-attach { cursor: pointer; font-size: 1.1rem; padding: .4rem; }
-.ep-send { background: var(--ea-grad); color: #fff; border: none; border-radius: var(--ea-r-btn, 999px); padding: .6rem 1.1rem; font: inherit; font-weight: 700; cursor: pointer; box-shadow: var(--ea-glow); }
+.ep-composer { display: flex; gap: .5rem; align-items: flex-end; padding: .7rem 1rem; padding-bottom: calc(.7rem + env(safe-area-inset-bottom, 0px)); border-top: 1px solid var(--ea-line); background: var(--ea-glass-strong); }
+.ep-composer textarea { flex: 1; min-width: 0; font: inherit; color: var(--ea-ink); background: #0a0e13; border: 1px solid var(--ea-line); border-radius: var(--ea-r-field, 10px); padding: .55rem .7rem; resize: none; min-height: 44px; box-sizing: border-box; }
+.ep-composer textarea::placeholder { color: var(--ea-ink-3); }
+.ep-attach { cursor: pointer; font-size: 1.1rem; padding: .4rem; min-width: 44px; min-height: 44px; display: inline-flex; align-items: center; justify-content: center; box-sizing: border-box; }
+.ep-send { background: var(--ea-grad); color: #fff; border: none; border-radius: 999px; padding: .6rem 1.1rem; font: inherit; font-family: "Outfit", "Poppins", system-ui, sans-serif; font-weight: 700; cursor: pointer; box-shadow: var(--ea-glow); min-height: 44px; }
+.ep-send:hover { filter: brightness(1.1); }
 .ep-foot { padding: 0 1rem .7rem; margin: 0; }
-.ep-turnstile { padding: 0 1rem .5rem; min-height: 0; }
+.ep-turnstile { padding: 0 1rem .5rem; min-height: 0; overflow-x: auto; }
 .ep-sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+.ep-head :focus-visible, .ep-composer :focus-visible, .ep-chip:focus-visible { outline: 2px solid var(--ea-accent); outline-offset: 2px; }
 
 [hidden] { display: none !important; }
