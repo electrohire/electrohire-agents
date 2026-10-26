@@ -51,7 +51,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.10.0";
+const ELLIE_VERSION = "0.11.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
@@ -103,7 +103,22 @@ async function frameAncestors(env: Env): Promise<string> {
   return [...origins].join(" ");
 }
 
+/* WS-8 (2026-10-26): the loader's button is the ONE Ellie launcher on
+ * every surface that embeds it. Its face is the ElectroHire robot logo
+ * mark (the plug-face mark of the production brand files — logo-192 /
+ * logo-512 in the website repo — redrawn inline as SVG so the loader
+ * stays a single self-contained script on this origin), on the brand
+ * navy disc from the panel design kit (ellie.css .ellie-launcher,
+ * 56px). The accessible name is exactly "Chat with Ellie". The panel
+ * frame is responsive: a 400px card on desktop, a full-screen sheet
+ * on phones, with safe-area insets honoured. The widget contract is
+ * unchanged: window.EllieWidget.open/close, config-gated, quiet hide
+ * on any failure. The idempotence guard keeps a duplicate embed of
+ * this script from ever producing a second launcher. */
+const ELLIE_MARK_SVG = `<svg viewBox="0 0 100 100" width="34" height="34" aria-hidden="true" focusable="false" fill="#fff"><rect x="30" y="6" width="10" height="30" rx="5"/><rect x="60" y="6" width="10" height="30" rx="5"/><path fill-rule="evenodd" d="M12 34h76v26a38 34 0 0 1-76 0V34zm10 10v15a28 24 0 0 0 56 0V44H22z"/><circle cx="41" cy="54" r="4.5"/><circle cx="59" cy="54" r="4.5"/></svg>`;
+const ELLIE_CLOSE_SVG = `<svg viewBox="0 0 100 100" width="26" height="26" aria-hidden="true" focusable="false" fill="none" stroke="#fff" stroke-width="9" stroke-linecap="round"><path d="M28 28 L72 72 M72 28 L28 72"/></svg>`;
 const LOADER_JS = `(function () {
+  if (window.EllieWidget) return; // one launcher per page, ever
   var script = document.currentScript;
   var siteKey = script && script.dataset ? script.dataset.siteKey : null;
   if (!siteKey) return;
@@ -112,22 +127,44 @@ const LOADER_JS = `(function () {
     .then(function (r) { return r.json(); })
     .then(function (cfg) {
       if (!cfg || !cfg.enabled) return; // unknown/disabled key: hide quietly
+      if (document.querySelector("[data-ellie-launcher]")) return;
+      var MARK = ${JSON.stringify(ELLIE_MARK_SVG)};
+      var CLOSE = ${JSON.stringify(ELLIE_CLOSE_SVG)};
       var panel = document.createElement("iframe");
       panel.src = cfg.panelUrl;
       panel.title = "Ellie — ElectroHire AI technical analyst";
-      panel.style.cssText = "position:fixed;right:16px;bottom:84px;width:380px;max-width:calc(100vw - 32px);height:560px;max-height:calc(100vh - 110px);border:0;border-radius:12px;box-shadow:0 12px 40px rgba(0,0,0,.25);display:none;z-index:2147483000;background:#fff";
+      panel.setAttribute("data-ellie-panel", "");
       var btn = document.createElement("button");
       btn.type = "button";
-      btn.textContent = "Chat with Ellie";
-      btn.setAttribute("aria-label", "Chat with Ellie, ElectroHire's AI technical analyst");
-      btn.style.cssText = "position:fixed;right:16px;bottom:16px;z-index:2147483000;padding:12px 18px;border-radius:999px;border:0;cursor:pointer;font:600 14px system-ui;background:#0b5fff;color:#fff;box-shadow:0 8px 24px rgba(0,0,0,.25)";
+      btn.setAttribute("data-ellie-launcher", "");
+      btn.setAttribute("aria-label", "Chat with Ellie");
+      btn.setAttribute("aria-expanded", "false");
+      btn.title = "Chat with Ellie";
+      btn.innerHTML = MARK + '<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Chat with Ellie</span>';
+      btn.style.cssText = "position:fixed;right:calc(16px + env(safe-area-inset-right, 0px));bottom:calc(16px + env(safe-area-inset-bottom, 0px));z-index:2147483000;width:56px;height:56px;min-width:56px;min-height:56px;padding:0;border:1px solid rgba(255,255,255,.16);border-radius:50%;cursor:pointer;background:#001B3A;color:#fff;display:flex;align-items:center;justify-content:center;box-shadow:0 8px 22px rgba(0,0,0,.35);-webkit-tap-highlight-color:transparent";
+      function fit() {
+        var phone = window.innerWidth <= 480;
+        if (phone) {
+          panel.style.cssText = "position:fixed;inset:0;width:100%;height:100dvh;max-height:100dvh;border:0;border-radius:0;box-shadow:none;z-index:2147482999;background:#0a0e13;padding-top:env(safe-area-inset-top, 0px);padding-bottom:env(safe-area-inset-bottom, 0px);box-sizing:border-box;" + (open ? "" : "display:none;");
+        } else {
+          panel.style.cssText = "position:fixed;right:calc(16px + env(safe-area-inset-right, 0px));bottom:calc(88px + env(safe-area-inset-bottom, 0px));width:400px;max-width:calc(100vw - 32px);height:min(704px, calc(100dvh - 112px));border:0;border-radius:16px;box-shadow:0 24px 64px rgba(10,20,60,.35);z-index:2147482999;background:#0a0e13;" + (open ? "" : "display:none;");
+        }
+      }
+      var open = false;
+      function render() {
+        fit();
+        btn.setAttribute("aria-expanded", open ? "true" : "false");
+        btn.innerHTML = (open ? CLOSE : MARK) + '<span style="position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0)">Chat with Ellie</span>';
+      }
       window.EllieWidget = {
-        open: function () { panel.style.display = "block"; },
-        close: function () { panel.style.display = "none"; },
+        open: function () { open = true; render(); },
+        close: function () { open = false; render(); },
       };
       btn.addEventListener("click", function () {
-        if (panel.style.display === "none") window.EllieWidget.open(); else window.EllieWidget.close();
+        if (open) window.EllieWidget.close(); else window.EllieWidget.open();
       });
+      window.addEventListener("resize", fit);
+      render();
       document.body.appendChild(panel);
       document.body.appendChild(btn);
     })

@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [0.11.0] - 2026-10-26
+
+### Fixed
+
+- Double Ellie launcher on the beta website (WS-8). Every marketing
+  page carried two floating launchers at the same corner: the website
+  layout's own static "Ask Ellie" pill and the pill this loader
+  injected. The loader's launcher is now the single launcher (the
+  website removes its static pill in the companion website change):
+  a 56px brand-navy disc whose face is the ElectroHire robot logo
+  mark (inline SVG of the production plug-face mark), accessible
+  name exactly "Chat with Ellie", with an idempotence guard so a
+  duplicate embed can never inject a second one. The old loader
+  blue (#0b5fff) is gone; the frame is responsive (400px card on
+  desktop, full-screen sheet on phones) with safe-area insets.
+
+### Changed
+
+- The panel bundle is restyled to the website design system
+  (PR #35 tokens: primary #207CF9, secondary #1e88e5, amber #f59e0b;
+  Poppins/Sora/Outfit; dark surfaces) in `panel.css`, and the panel
+  header carries the robot mark instead of a letter "E". Behaviour
+  contract unchanged (in-panel Turnstile, session-token calls,
+  disclosure-first, finalize/plan polling).
+
 ## [0.9.0] - 2026-10-25
 
 ### Fixed

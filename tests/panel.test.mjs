@@ -158,6 +158,34 @@ test("the shipped bundle speaks the served contract (static pins)", async () => 
   assert.ok(html.includes('id="turnstile"'), "panel page must carry the Turnstile container");
 });
 
+test("WS-8: the loader injects ONE robot-mark launcher named 'Chat with Ellie'", async () => {
+  const res = await get("/loader.js");
+  assert.equal(res.status, 200);
+  const js = await res.text();
+  // The single launcher: brand-navy disc, robot logo mark (inline SVG),
+  // exact accessible name, idempotence guard against duplicate embeds.
+  assert.ok(js.includes('aria-label", "Chat with Ellie"'), "launcher accessible name must be exactly 'Chat with Ellie'");
+  assert.ok(js.includes("data-ellie-launcher"), "launcher carries the dedupe marker");
+  assert.ok(js.includes("if (window.EllieWidget) return"), "loader must refuse a second injection");
+  assert.ok(js.includes("<svg") && js.includes("0 0 100 100"), "launcher face is the robot mark SVG, not text or a generic icon");
+  assert.ok(js.includes("#001B3A"), "launcher disc is the brand navy");
+  assert.ok(!js.includes("#0b5fff"), "the old off-brand loader blue is gone");
+  assert.ok(!js.includes('btn.textContent = "Chat with Ellie"'), "no text-pill launcher remains");
+  // Responsive frame: full-screen sheet on phones, safe-area insets.
+  assert.ok(js.includes("100dvh") && js.includes("safe-area-inset"), "panel frame is responsive with safe-area insets");
+});
+
+test("WS-8: the served panel bundle carries the site design tokens", async () => {
+  const css = await (await get("/panel-assets/panel.css")).text();
+  for (const token of ["#207cf9", "#1e88e5", "#f59e0b", "#0a0e13", "#223041", '"Poppins"', '"Sora"', '"Outfit"', "100dvh", "safe-area-inset"]) {
+    assert.ok(css.toLowerCase().includes(token.toLowerCase()), `panel.css is missing the site token ${token}`);
+  }
+  const html = await (await get("/panel")).text();
+  assert.ok(html.includes('data-theme="dark"'), "panel opts into the dark system");
+  assert.ok(html.includes('viewBox="0 0 100 100"'), "panel header carries the robot mark, not a letter");
+  assert.ok(!html.includes('<span class="ep-mark">E</span>'), "the letter-E placeholder mark is gone");
+});
+
 test("GET /panel falls back to the stub only when the bundle is missing", async () => {
   const bare = { ...env, ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
   const res = await worker.fetch(new Request("https://ellie-beta.electrohire.com/panel"), bare);
