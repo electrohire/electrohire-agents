@@ -129,6 +129,7 @@ export interface EllieStore {
   deleteUpload(id: string): Promise<boolean>;
   createAnalysis(row: AnalysisRow): Promise<void>;
   getAnalysis(id: string): Promise<AnalysisRow | null>;
+  getAnalysisBySession(sessionId: string): Promise<AnalysisRow | null>;
   updateAnalysis(id: string, patch: { status?: string; currentStep?: number }, updatedAt: number): Promise<void>;
   createOutput(row: OutputRow): Promise<void>;
   listOutputs(analysisId: string): Promise<OutputRow[]>;
@@ -197,6 +198,10 @@ export function createMemoryStore(opts: MemoryStoreOpts = {}): EllieStore & {
     },
     async createAnalysis(row: AnalysisRow) { analyses.set(row.id, { ...row }); },
     async getAnalysis(id: string) { const a = analyses.get(id); return a ? { ...a } : null; },
+    async getAnalysisBySession(sessionId: string) {
+      const all = [...analyses.values()].filter((a) => a.sessionId === sessionId).sort((x, y) => y.createdAt - x.createdAt);
+      return all[0] ? { ...all[0] } : null;
+    },
     async updateAnalysis(id: string, patch: { status?: string; currentStep?: number }, updatedAt: number) {
       const a = analyses.get(id); if (!a) throw new Error("Analysis not found.");
       if (patch.status !== undefined) a.status = patch.status;
@@ -364,6 +369,12 @@ export function createD1Store(db: D1Database, files?: EllieFilesBucket): EllieSt
     },
     async getAnalysis(id) {
       const row = await db.prepare("SELECT * FROM ellie_analyses WHERE id = ?").bind(id)
+        .first<{ id: string; session_id: string | null; account_id: string | null; brief: string; status: string; current_step: number; created_at: number; updated_at: number }>();
+      if (!row) return null;
+      return { id: row.id, sessionId: row.session_id, accountId: row.account_id, brief: row.brief, status: row.status, currentStep: row.current_step, createdAt: row.created_at, updatedAt: row.updated_at };
+    },
+    async getAnalysisBySession(sessionId) {
+      const row = await db.prepare("SELECT * FROM ellie_analyses WHERE session_id = ? ORDER BY created_at DESC LIMIT 1").bind(sessionId)
         .first<{ id: string; session_id: string | null; account_id: string | null; brief: string; status: string; current_step: number; created_at: number; updated_at: number }>();
       if (!row) return null;
       return { id: row.id, sessionId: row.session_id, accountId: row.account_id, brief: row.brief, status: row.status, currentStep: row.current_step, createdAt: row.created_at, updatedAt: row.updated_at };

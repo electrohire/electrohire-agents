@@ -78,6 +78,86 @@ test("widget-config hands the panel its site key in panelUrl", async () => {
   assert.equal((await unknown.json()).enabled, false);
 });
 
+// --- The panel's served contract (the 2026-10-25 reconciliation) ---
+// The bundle was first written against the spec's contract (no
+// Turnstile token, { content } messages, /upload, /api/analyses) that
+// the service never implemented, so the served panel could not start
+// a session. These tests pin the REAL anonymous-panel protocol end to
+// end at the Worker layer: first-party origin + Turnstile-gated
+// creation, session-token message round-trip, session analysis read.
+const realFetch = globalThis.fetch;
+globalThis.fetch = async (url, init) => {
+  if (String(url).startsWith("https://challenges.cloudflare.com/turnstile")) {
+    return new Response(JSON.stringify({ success: true }), { headers: { "content-type": "application/json" } });
+  }
+  return realFetch(url, init);
+};
+const envTs = { ...env, TURNSTILE_SECRET_KEY: "test-secret-value" };
+const post = (path, body, headers = {}) =>
+  worker.fetch(new Request(`https://ellie-beta.electrohire.com${path}`, {
+    method: "POST", headers: { "content-type": "application/json", ...headers },
+    body: JSON.stringify(body),
+  }), envTs);
+
+test("panel protocol: session creation from the panel's own origin, with a Turnstile token", async () => {
+  const res = await post("/api/chat/sessions",
+    { siteKey: WEB_KEY, turnstileToken: "tok" },
+    { origin: "https://ellie-beta.electrohire.com" });
+  assert.equal(res.status, 201);
+  const body = await res.json();
+  assert.ok(body.sessionId && typeof body.sessionToken === "string" && body.sessionToken.length > 10);
+  assert.match(body.disclosure, /AI/);
+  assert.ok(Array.isArray(body.outline?.intake) && body.outline.intake.length > 0);
+});
+
+test("panel protocol: registered embedding origin still creates; unregistered origin is refused", async () => {
+  const ok = await post("/api/chat/sessions",
+    { siteKey: WEB_KEY, turnstileToken: "tok" },
+    { origin: "https://beta.electrohire.com" });
+  assert.equal(ok.status, 201);
+  const no = await post("/api/chat/sessions",
+    { siteKey: WEB_KEY, turnstileToken: "tok" },
+    { origin: "https://evil.example" });
+  assert.equal(no.status, 403);
+  assert.equal((await no.json()).error, "origin_refused");
+});
+
+test("panel protocol: creation without a Turnstile token is refused as token-missing", async () => {
+  const res = await post("/api/chat/sessions", { siteKey: WEB_KEY }, { origin: "https://ellie-beta.electrohire.com" });
+  assert.equal(res.status, 400);
+  assert.equal((await res.json()).error, "turnstile_token_missing");
+});
+
+test("panel protocol: message round-trip on the session token; analysis read is an honest 404 before finalize", async () => {
+  const created = await (await post("/api/chat/sessions",
+    { siteKey: WEB_KEY, turnstileToken: "tok" },
+    { origin: "https://ellie-beta.electrohire.com" })).json();
+  const sid = created.sessionId;
+  const tok = { "x-ellie-session-token": created.sessionToken };
+  const msg = await post(`/api/chat/sessions/${sid}/messages`, { text: "A battery-powered sensor node" }, tok);
+  assert.equal(msg.status, 200);
+  const msgBody = await msg.json();
+  assert.ok(typeof msgBody.reply === "string" && msgBody.reply.length > 0);
+  assert.equal(msgBody.modelConfigured, false); // no OPENROUTER_API_KEY in this env: honest fallback, not a fake
+  const bad = await post(`/api/chat/sessions/${sid}/messages`, { text: "hi" }, { "x-ellie-session-token": "ehsess_wrong" });
+  assert.equal(bad.status, 401);
+  const noAnalysis = await worker.fetch(new Request(`https://ellie-beta.electrohire.com/api/chat/sessions/${sid}/analysis`, { headers: tok }), envTs);
+  assert.equal(noAnalysis.status, 404);
+  assert.equal((await noAnalysis.json()).error, "analysis_not_ready");
+  const badRead = await worker.fetch(new Request(`https://ellie-beta.electrohire.com/api/chat/sessions/${sid}/analysis`, { headers: { "x-ellie-session-token": "ehsess_wrong" } }), envTs);
+  assert.equal(badRead.status, 401);
+});
+
+test("the shipped bundle speaks the served contract (static pins)", async () => {
+  const js = await readFile(new URL("../apps/ellie/assets/panel-assets/panel.js", import.meta.url), "utf8");
+  for (const pin of ["x-ellie-session-token", "turnstileToken", "/uploads", "/analysis", "data.reply", "body: JSON.stringify({ text: text })"]) {
+    assert.ok(js.includes(pin), `panel.js is missing the contract pin: ${pin}`);
+  }
+  const html = await readFile(new URL("../apps/ellie/assets/panel/index.html", import.meta.url), "utf8");
+  assert.ok(html.includes("challenges.cloudflare.com/turnstile"), "panel page must load the Turnstile script");
+  assert.ok(html.includes('id="turnstile"'), "panel page must carry the Turnstile container");
+});
+
 test("GET /panel falls back to the stub only when the bundle is missing", async () => {
   const bare = { ...env, ASSETS: { fetch: async () => new Response("Not found", { status: 404 }) } };
   const res = await worker.fetch(new Request("https://ellie-beta.electrohire.com/panel"), bare);

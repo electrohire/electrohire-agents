@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [0.9.0] - 2026-10-25
+
+### Fixed
+
+- The served panel could not start a conversation. The bundle had
+  been written against the spec's contract, which the service never
+  implemented: it sent no Turnstile token to session creation, posted
+  messages as `{ content }` without the session token, uploaded to
+  `/upload`, and read the plan from a route that does not exist — and
+  the service refused the panel's own origin at creation. The bundle
+  now speaks the served contract (Turnstile-gated creation with the
+  disclosure rendered first, session-token message/upload/finalize/
+  escalate calls, `{ text }` / `{ reply }` shapes), and the service
+  accepts its own first-party origin at session creation alongside
+  the registered embedding origins (site key + Turnstile still gate
+  every creation). Added `GET /api/chat/sessions/:id/analysis` — the
+  session-authorized plan read (engine: `getAnalysisBySession`,
+  additive on the store + engine) — and the `/panel` CSP now admits
+  the Turnstile widget. Pinned by five new tests in
+  `tests/panel.test.mjs` covering the anonymous panel protocol at
+  the Worker layer.
+
 ## [0.8.0] - 2026-10-25
 
 ### Fixed

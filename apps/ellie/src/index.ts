@@ -41,7 +41,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.8.0";
+const ELLIE_VERSION = "0.9.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
@@ -246,7 +246,7 @@ export default {
           const asset = await env.ASSETS.fetch(new Request(new URL("/panel/index.html", url.origin))).catch(() => null);
           if (asset && asset.status === 200) html = await asset.text();
         }
-        return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": `default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; frame-ancestors ${await frameAncestors(env)}`, "x-frame-options": "SAMEORIGIN" } });
+        return new Response(html, { headers: { "content-type": "text/html; charset=utf-8", "content-security-policy": `default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline'; frame-src https://challenges.cloudflare.com; connect-src 'self' https://challenges.cloudflare.com; frame-ancestors ${await frameAncestors(env)}`, "x-frame-options": "SAMEORIGIN" } });
       }
       if (path.startsWith("/panel-assets/") && req.method === "GET") {
         if (env.ASSETS) {
@@ -305,7 +305,13 @@ export default {
         const record = siteKey ? await lookupSiteKey(env, siteKey) : null;
         if (!record || !record.enabled) return json({ error: "site_key_refused", detail: "This site key is unknown or disabled." }, 403);
         const origin = req.headers.get("origin") ?? "";
-        if (record.origins.length && !record.origins.includes(origin)) {
+        // Registered embedding origins are allowed; so is this
+        // service's OWN origin — the panel served from here is a
+        // first-party page, and its calls carry the panel origin, not
+        // the embedding site's. The site key + Turnstile still gate
+        // creation either way.
+        const firstParty = origin !== "" && origin === url.origin;
+        if (record.origins.length && !firstParty && !record.origins.includes(origin)) {
           return json({ error: "origin_refused", detail: "This site key is not registered for that origin." }, 403);
         }
         const ts = await verifyTurnstile(env, typeof body.turnstileToken === "string" ? body.turnstileToken : "", ip);
@@ -318,6 +324,26 @@ export default {
         const headers: Record<string, string> = {};
         if (origin && record.origins.includes(origin)) headers["access-control-allow-origin"] = origin;
         return json({ sessionId: created.session.id, sessionToken: created.sessionToken, disclosure: created.disclosure, starterPrompts: created.starterPrompts, outline: created.outline }, 201, headers);
+      }
+
+      // The panel's plan read: the session's own latest analysis,
+      // session-authorized (the credential-gated /api/analyses routes
+      // remain the API path). Each read advances one generation step
+      // while the analysis is generating, like getAnalysisAdvancing.
+      const analysisReadMatch = path.match(/^\/api\/chat\/sessions\/([^/]+)\/analysis$/);
+      if (analysisReadMatch && req.method === "GET") {
+        const [, sessionId] = analysisReadMatch;
+        const authz = await authorizeSession(env, req, sessionId);
+        if (!authz.ok) return json({ error: "session_refused", detail: "This session token or credential does not own that session." }, authz.status ?? 401);
+        try {
+          const analysis = await engine.getAnalysisBySession(sessionId, { accountId: authz.accountId });
+          return json({ analysis });
+        } catch (e) {
+          if (e instanceof ellie.EllieError && e.code === "not_found") {
+            return json({ error: "analysis_not_ready", detail: "No analysis has been drafted for this session yet." }, 404);
+          }
+          throw e;
+        }
       }
 
       const chatMatch = path.match(/^\/api\/chat\/sessions\/([^/]+)\/(messages|uploads|finalize|escalate)$/);

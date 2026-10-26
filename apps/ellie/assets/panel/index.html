@@ -48,6 +48,8 @@
 
   <p class="ep-status" id="status" role="status"></p>
 
+  <div class="ep-turnstile" id="turnstile" aria-label="Human check"></div>
+
   <form class="ep-composer" id="composer">
     <label class="ep-attach">
       <span aria-hidden="true">📎</span><span class="ep-sr">Attach a document or image (up to 2 MB)</span>
@@ -58,6 +60,7 @@
   </form>
   <p class="ep-foot" id="human">Talk to a human is always available above — it files a real support case with this conversation attached. No response time is promised.</p>
 </main>
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit" defer></script>
 <script src="/panel-assets/panel.js" defer></script>
 </body>
 </html>
