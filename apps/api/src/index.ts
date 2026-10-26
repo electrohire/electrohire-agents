@@ -1,28 +1,29 @@
 import { OpenAPIHono, createRoute, z } from "@hono/zod-openapi";
 import {
-  loadContent, estimateCost, scopingChecklist, timelineCalculator,
+  loadContent, loadBlogPosts, loadBlogPost, loadEvents, estimateCost, scopingChecklist, timelineCalculator,
   EstimateResponse, RateLimiter, globalKillOn, disabledTools, logRequest,
   identityLabel, screenInput, screenOutput, LocalAuditSink,
   extractCredential, authorizeCredential, storeFromEnv, scopeForApiPath,
   protectedResourceMetadata, RESOURCES, scopeForApiAction, createActionStore, ellie,
-  type ContentEnv, type GuardEnv, type KeysEnv,
+  type ContentEnv, type PublicContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
 /**
  * ElectroHire public API — Phase C1 (read API + tools), LOCAL TRACK build.
  *
  * Content is mirrored from the website's generated /content/v1.json (C-01):
- * no content fact is maintained in this repo. Blog endpoints are ABSENT
- * until Phase B data exists (C-02) — an absent endpoint, not a fake empty
- * one. Agent paths carry no challenge machinery (C-04 local half): no
+ * no content fact is maintained in this repo. Blog and events endpoints
+ * (WS-5, 2026-10-26) mirror the website's published-only public JSON
+ * (/api/public/blog, /api/public/events) — the blog data spec 004 waited
+ * for exists since Phase B / PB-4. Agent paths carry no challenge machinery (C-04 local half): no
  * Turnstile, no bot challenge anywhere in this Worker; protection is the
  * in-Worker rate limit + kill switches (C-05).
  *
  * Keep API_VERSION in sync with this package's package.json version.
  */
-const API_VERSION = "0.6.0";
+const API_VERSION = "0.7.0";
 
-type Env = ContentEnv & GuardEnv & KeysEnv & ellie.EllieEnv;
+type Env = ContentEnv & PublicContentEnv & GuardEnv & KeysEnv & ellie.EllieEnv;
 const AUTH_ISSUER = "https://auth-beta.electrohire.com";
 /** C-13 action store (LOCAL stand-in for the website data layer's B-02/B-05
  * records + D-04 double opt-in — same behavior, in-memory home). */
@@ -295,11 +296,34 @@ app.openapi(createRoute({ method: "get", path: "/v1/ellie/analyses/{id}", tags: 
     }
   });
 
-// NOTE (C-02): no /v1/blog route is registered. Blog data does not exist
-// until Phase B (B-03); an absent endpoint is honest, a fake empty one is not.
+// WS-5 (2026-10-26): blog data has existed since Phase B (B-03) and the
+// PB-4 wave, so spec 004's blog endpoints ship now. The website serves
+// published posts as public JSON (/api/public/blog) and this API mirrors
+// it — published posts only; a draft has no public form on any surface.
+// Events (PB-4, G14) ride the same pattern. Scopes: read:blog for the
+// blog routes, read:events for the events route (scopeForApiPath).
+const BlogListResponse = z.object({ total: z.number(), posts: z.array(z.any()) }).openapi("BlogListResponse");
+app.openapi(createRoute({ method: "get", path: "/v1/blog", tags: ["Content"], summary: "Blog posts and checklists (published only) — metadata; full text at /v1/blog/{slug}",
+  responses: { 200: json(BlogListResponse, "Published posts, newest first."), 502: err("Blog source unavailable.") } }),
+  async (c) => c.json(await loadBlogPosts(c.env as Env), 200));
+
+const BlogPostResponse = z.object({ slug: z.string(), title: z.string(), body: z.string() }).passthrough().openapi("BlogPostResponse");
+app.openapi(createRoute({ method: "get", path: "/v1/blog/{slug}", tags: ["Content"], summary: "One published blog post, full text",
+  request: { params: z.object({ slug: z.string() }) },
+  responses: { 200: json(BlogPostResponse, "The published post."), 404: err("No published post with that slug — drafts and unpublished posts have no public form."), 502: err("Blog source unavailable.") } }),
+  async (c) => {
+    const post = await loadBlogPost(c.env as Env, c.req.param("slug"));
+    if (!post) return c.json({ error: "not_found", detail: "No published post with that slug. Drafts and unpublished posts have no public form." }, 404);
+    return c.json(post, 200);
+  });
+
+const EventsResponse = z.object({ total: z.number(), events: z.array(z.any()) }).openapi("EventsResponse");
+app.openapi(createRoute({ method: "get", path: "/v1/events", tags: ["Content"], summary: "Events (published only)",
+  responses: { 200: json(EventsResponse, "Published events, newest first."), 502: err("Events source unavailable.") } }),
+  async (c) => c.json(await loadEvents(c.env as Env), 200));
 
 app.get("/llms.txt", (c) => c.text(
-  `# ElectroHire API (beta)\n\nREST API: https://api-beta.electrohire.com (OpenAPI 3.1 at /openapi.json)\nMCP server (Streamable HTTP): https://mcp-beta.electrohire.com/mcp\nHostnames are pending the deploy remedy — see the C1 run record. No Turnstile or bot challenge on agent paths, by design.\n`));
+  `# ElectroHire API (beta)\n\nREST API: https://api-beta.electrohire.com (OpenAPI 3.1 at /openapi.json)\nMCP server (Streamable HTTP): https://mcp-beta.electrohire.com/mcp\nRead surfaces: site content, services, FAQ, pricing, blog (published posts and checklists), events, plus the cost estimator, scoping checklist, and timeline calculator tools.\nAction surfaces (a personal API key or OAuth 2.1 token with the action scope is required): start an Ellie analysis and read its result, subscribe to the newsletter (double opt-in), open a support ticket. No payments run through this API, in any phase.\nNo Turnstile or bot challenge on agent paths, by design.\n`));
 
 app.notFound((c) => c.json({ error: "not_found", detail: `No route ${c.req.path}.` }, 404));
 app.onError((e, c) => { console.log(JSON.stringify({ log: "eh-error", endpoint: c.req.path, message: String((e as Error)?.message ?? e) })); return c.json({ error: "upstream", detail: String((e as Error)?.message ?? e) }, 502); });
@@ -308,7 +332,7 @@ app.doc("/openapi.json", {
   openapi: "3.1.0",
   info: {
     title: "ElectroHire API", version: API_VERSION,
-    description: "Public read + tools API for ElectroHire. Content is mirrored from the website's generated /content/v1.json (C-01). Estimates always return a range with assumptions — never a bare number. LOCAL TRACK draft build (C1): proven locally, awaiting served acceptance after the deploy credential remedy.",
+    description: "Public read + tools API for ElectroHire (beta). Static content is mirrored from the website's generated /content/v1.json (C-01); blog posts and events are mirrored from the website's published-only public JSON. Estimates always return a range with assumptions — never a bare number. Action endpoints require a personal API key or OAuth 2.1 token holding the action scope. No payments run through this API.",
   },
 });
 

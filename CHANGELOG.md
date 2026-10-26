@@ -7,6 +7,45 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Each component (API, MCP server, skills, SDKs) is versioned independently; the
 version heading below tracks the repository release.
 
+## [Unreleased]
+
+### Added
+
+- Blog and events on the agent surfaces (WS-5, 2026-10-26). The blog
+  data spec 004 waited for has existed since Phase B / PB-4, so the API
+  gains `GET /v1/blog` and `GET /v1/blog/{slug}` (published posts only)
+  and `GET /v1/events`, and the MCP server gains
+  `electrohire_list_blog_posts`, `electrohire_get_blog_post`, and
+  `electrohire_list_events` — mirrored from the website's published-only
+  public JSON. New scope `read:events`; blog routes/tools take
+  `read:blog` (whose dashboard scope entry previously named no tools).
+  API and MCP move to 0.7.0; Python SDK to 0.3.0 with `blog()`,
+  `blog_post()`, and `events()`.
+- The MCP + skills coverage gate (`tools/check-coverage.mjs`,
+  `tools/coverage-map.json`): a blocking CI check that enumerates the
+  served OpenAPI operations, the MCP tools, and the skills / connector
+  guide / docs / SDK references, and fails when they diverge. This is
+  the enforcement for the standing rule (2026-10-26): no system change
+  ships without its MCP + skills updates in the same change.
+- Two skill packages from spec 004's launch set: `electrohire-ellie-brief`
+  (bring Ellie a project) and `electrohire-cite-facts` (cite ElectroHire
+  facts). `electrohire-basics` moves to 0.2.0 with the current surface.
+
+### Changed
+
+- Every connector guide, config example, the registry, the skills, and
+  the SDK now point at the live beta endpoints
+  (`api-beta.electrohire.com`, `mcp-beta.electrohire.com`) — they
+  previously named the not-yet-live production names and said the
+  endpoints were not live. Guides now state correctly that Ellie action
+  tools are offered, and that action tools accept a personal key with
+  the action scope as well as OAuth 2.1.
+- The Workers' content source is now the beta host's
+  `/content/v1.json`; the previous source host
+  (electrohire-website-staging.pages.dev) was retired with the staging
+  Pages project. A new `PUBLIC_CONTENT_BASE_URL` var names the beta host
+  for the blog/events JSON mirrors.
+
 ## [0.11.0] - 2026-10-26
 
 ### Fixed

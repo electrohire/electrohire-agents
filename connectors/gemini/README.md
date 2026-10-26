@@ -2,11 +2,11 @@
 
 Add ElectroHire as a remote MCP server in Google's Gemini CLI. Gemini CLI uses `httpUrl` (not `url`) for streamable HTTP servers, and expands `${ELECTROHIRE_API_KEY}` in header values from your environment.
 
-> **Beta endpoints.** The ElectroHire MCP server (`https://mcp.electrohire.com/mcp`) and API (`https://api.electrohire.com`) are planned beta endpoints for the new ElectroHire platform. They are not yet live production endpoints.
+> **Beta endpoints.** The ElectroHire MCP server (`https://mcp-beta.electrohire.com/mcp`) and API (`https://api-beta.electrohire.com`) are the live beta endpoints for the new ElectroHire platform. The beta is invite-only — you need an ElectroHire beta account to create a key. They are not the production endpoints.
 
 ## Prerequisites
 
-1. **Create a key in your ElectroHire dashboard — the new ground-up user dashboard being built as part of the ElectroHire platform program (this key-management feature is part of that new dashboard; it is not a feature of the current production app).** Sign in, open **API Keys** (the MCP API keys page) in the dashboard sidebar, choose **+ Create a new key**, name it for this client (for example, `Gemini CLI`), pick the scopes you need (read-only is enough for the test below), and copy the key once — it is shown only once.
+1. **Create a key in your ElectroHire beta dashboard** (app-beta.electrohire.com — the beta is invite-only, so you need a beta account first; key management is a feature of the new beta dashboard, not of the current production app). Sign in, open **API Keys** (the MCP API keys page) in the dashboard sidebar, choose **+ Create a new key**, name it for this client (for example, `Gemini CLI`), pick the scopes you need (read-only is enough for the test below), and copy the key once — it is shown only once.
 2. Store the key as an environment variable named `ELECTROHIRE_API_KEY` in your shell, your operating system's secret store, or your client's secret store. Never paste a real key into a config file you commit.
 3. Gemini CLI installed. Set `ELECTROHIRE_API_KEY` in your shell.
 
@@ -14,7 +14,7 @@ Add ElectroHire as a remote MCP server in Google's Gemini CLI. Gemini CLI uses `
 
 1. Either run:
    ```bash
-   gemini mcp add electrohire https://mcp.electrohire.com/mcp --transport http --header "Authorization: Bearer $ELECTROHIRE_API_KEY"
+   gemini mcp add electrohire https://mcp-beta.electrohire.com/mcp --transport http --header "Authorization: Bearer $ELECTROHIRE_API_KEY"
    ```
 2. Or add the config example below under `mcpServers` in `~/.gemini/settings.json`.
 3. Start `gemini` and run `/mcp` — `electrohire` should show as connected with its tools listed.
@@ -27,7 +27,7 @@ The machine-readable example in this folder uses this shape:
 {
   "mcpServers": {
     "electrohire": {
-      "httpUrl": "https://mcp.electrohire.com/mcp",
+      "httpUrl": "https://mcp-beta.electrohire.com/mcp",
       "headers": {
         "Authorization": "Bearer ${ELECTROHIRE_API_KEY}"
       }
@@ -47,12 +47,12 @@ Expected result: the agent calls the read-only `electrohire_site_search` tool an
 
 - **401 Unauthorized** — the key is missing, revoked, or expired, or the `Authorization: Bearer <key>` header was not sent. Create a fresh key in the dashboard (step 1) and update the environment variable, then restart the client.
 - **Scope / permission error** — the key works, but it does not include the scope the tool needs. Scopes cannot be changed on an existing key — create a new key with the required scope, revoke the old one, then retry.
-- **Server not found / connection refused** — check the URL is exactly `https://mcp.electrohire.com/mcp` and that you are online. Remember these are planned beta endpoints, not yet live production.
+- **Server not found / connection refused** — check the URL is exactly `https://mcp-beta.electrohire.com/mcp` and that you are online. These are the live beta endpoints; the production names are a later cutover, not a rename you should guess at.
 - **Tools do not appear** — restart the client after editing its config; most clients only read MCP config at startup.
 
 ## Acting on ElectroHire's behalf of a user — OAuth 2.1 (action tools)
 
-Read tools work with the API key above. **Action tools** — subscribing an address to the newsletter (`electrohire_newsletter_subscribe`) and opening a support ticket (`electrohire_support_ticket`) — use **OAuth 2.1 delegated authorization** instead of a personal key:
+Read tools work with the API key above. **Action tools** — subscribing an address to the newsletter (`electrohire_newsletter_subscribe`), opening a support ticket (`electrohire_support_ticket`), and the Ellie tools (`electrohire_ellie_session` to start an analysis, `electrohire_ellie_analysis` to collect it) — work two ways, under exactly the same server-side scope checks: a personal API key that carries the matching action scope, or **OAuth 2.1 delegated authorization**:
 
 1. Your client opens ElectroHire's authorization endpoint and sends the user there. The flow is **authorization code + PKCE (S256)** — no other grant, no plain PKCE.
 2. The user sees ElectroHire's **consent screen** (a human form protected by Cloudflare Turnstile) naming your client and the exact scopes. Nothing is granted until the user approves there — an agent cannot approve on the user's behalf.
@@ -60,7 +60,7 @@ Read tools work with the API key above. **Action tools** — subscribing an addr
 4. Two honesty rules are built in and cannot be configured away: a newsletter subscribe stays **pending until the person clicks the confirmation email link** (double opt-in), and the subscribe response never reveals whether an address was already subscribed. A support ticket filed this way lands in the same inbox, with the same fields, as one filed on the website.
 5. Tokens last one hour. Revoking a token (the user, in their dashboard) takes effect on the very next request. Discovery: authorization-server metadata (RFC 8414) on the authorization host, protected-resource metadata (RFC 9728) at `/.well-known/oauth-protected-resource` on each resource.
 
-Ellie session/analysis actions are **not offered** — they arrive only when the Ellie backend exists behind them, and no guide or client should promise them before then.
+Ellie session/analysis actions **are offered** — the Ellie backend is live. `electrohire_ellie_session` starts an analysis and returns a handle at once; `electrohire_ellie_analysis` collects the result. Both need the `action:ellie_session` scope, and an analysis can only be read by the account whose credential started it.
 
 ## Revoke or rotate the key
 

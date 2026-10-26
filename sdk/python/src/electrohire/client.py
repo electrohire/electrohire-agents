@@ -4,10 +4,11 @@ The ElectroHire runtimes are TypeScript on Cloudflare Workers; this package is
 a client for agent developers working in Python. It uses only the standard
 library, so it installs anywhere Python >= 3.10 runs.
 
-Phase C1 coverage: the read endpoints (site content, service pages, FAQ,
-pricing) and the three tool endpoints (cost estimator, scoping checklist,
-timeline calculator). There is deliberately no blog method — the API has no
-blog endpoint until Phase B data exists.
+Coverage: the read endpoints (site content, service pages, FAQ, pricing,
+blog, events) and the three tool endpoints (cost estimator, scoping
+checklist, timeline calculator). Blog and events joined in SDK 0.3.0
+(WS-5, 2026-10-26), when the API gained them — the blog data they mirror
+has existed on the website since Phase B / PB-4.
 """
 
 from __future__ import annotations
@@ -16,7 +17,7 @@ import json
 import urllib.error
 import urllib.request
 
-DEFAULT_BASE_URL = "https://api.electrohire.com"
+DEFAULT_BASE_URL = "https://api-beta.electrohire.com"
 
 __all__ = ["ElectroHireClient", "ElectroHireError"]
 
@@ -29,9 +30,10 @@ class ElectroHireClient:
     """Client for the ElectroHire public API (URL-versioned under ``/v1``).
 
     Args:
-        base_url: API base URL. Defaults to the production API. For the
-            beta, pass the beta API base URL explicitly (the production
-            name is a cutover decision, not a default to change quietly).
+        base_url: API base URL. Defaults to the live beta API
+            (https://api-beta.electrohire.com). The production name is a
+            later cutover decision; pass a base URL explicitly for a
+            local or future production API.
         api_key: Optional API key for endpoints that require one. Public
             C1 read/tool endpoints do not. Sent as a Bearer header.
         timeout: Per-request timeout in seconds.
@@ -73,6 +75,19 @@ class ElectroHireClient:
         """Fees, pod presentation (no pod price exists — deliberately
         unpublished, as on the site), and UK Contractors Hub tiers."""
         return self._get("/v1/pricing")
+
+    def blog(self) -> dict:
+        """Published blog posts and checklists (metadata only; full text
+        via blog_post). Drafts have no public form and never appear."""
+        return self._get("/v1/blog")
+
+    def blog_post(self, slug: str) -> dict:
+        """One published blog post, full text, by slug."""
+        return self._get(f"/v1/blog/{slug}")
+
+    def events(self) -> dict:
+        """Published events, newest first."""
+        return self._get("/v1/events")
 
     # -- C1 tool endpoints --------------------------------------------------
     def estimate_cost(self, needs: list[str], product_type: str = "other",
@@ -121,7 +136,7 @@ class ElectroHireClient:
     def _headers(self) -> dict[str, str]:
         headers = {
             "Accept": "application/json",
-            "User-Agent": "electrohire-python/0.2.0",
+            "User-Agent": "electrohire-python/0.3.0",
         }
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
