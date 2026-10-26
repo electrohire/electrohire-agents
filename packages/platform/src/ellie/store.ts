@@ -120,6 +120,7 @@ export interface EllieStore {
   getSiteKey(key: string): Promise<SiteKeyRow | null>;
   createSession(row: SessionRow): Promise<void>;
   getSession(id: string): Promise<SessionRow | null>;
+  listSessionsByAccount(accountId: string): Promise<SessionRow[]>;
   updateSession(id: string, state: Record<string, unknown>, updatedAt: number): Promise<void>;
   appendMessage(row: MessageRow): Promise<void>;
   listMessages(sessionId: string): Promise<MessageRow[]>;
@@ -130,6 +131,7 @@ export interface EllieStore {
   createAnalysis(row: AnalysisRow): Promise<void>;
   getAnalysis(id: string): Promise<AnalysisRow | null>;
   getAnalysisBySession(sessionId: string): Promise<AnalysisRow | null>;
+  listAnalysesByAccount(accountId: string): Promise<AnalysisRow[]>;
   updateAnalysis(id: string, patch: { status?: string; currentStep?: number }, updatedAt: number): Promise<void>;
   createOutput(row: OutputRow): Promise<void>;
   listOutputs(analysisId: string): Promise<OutputRow[]>;
@@ -176,6 +178,10 @@ export function createMemoryStore(opts: MemoryStoreOpts = {}): EllieStore & {
     async getSiteKey(key: string) { return siteKeys.get(key) ?? null; },
     async createSession(row: SessionRow) { sessions.set(row.id, { ...row, state: { ...row.state } }); },
     async getSession(id: string) { const s = sessions.get(id); return s ? { ...s, state: { ...s.state } } : null; },
+    async listSessionsByAccount(accountId: string) {
+      return [...sessions.values()].filter((s) => s.accountId === accountId)
+        .sort((a, b) => b.createdAt - a.createdAt).map((s) => ({ ...s, state: { ...s.state } }));
+    },
     async updateSession(id: string, state: Record<string, unknown>, updatedAt: number) {
       const s = sessions.get(id); if (!s) throw new Error("Session not found.");
       s.state = { ...state }; s.updatedAt = updatedAt;
@@ -201,6 +207,10 @@ export function createMemoryStore(opts: MemoryStoreOpts = {}): EllieStore & {
     async getAnalysisBySession(sessionId: string) {
       const all = [...analyses.values()].filter((a) => a.sessionId === sessionId).sort((x, y) => y.createdAt - x.createdAt);
       return all[0] ? { ...all[0] } : null;
+    },
+    async listAnalysesByAccount(accountId: string) {
+      return [...analyses.values()].filter((a) => a.accountId === accountId)
+        .sort((a, b) => b.createdAt - a.createdAt).map((a) => ({ ...a }));
     },
     async updateAnalysis(id: string, patch: { status?: string; currentStep?: number }, updatedAt: number) {
       const a = analyses.get(id); if (!a) throw new Error("Analysis not found.");
@@ -302,6 +312,11 @@ export function createD1Store(db: D1Database, files?: EllieFilesBucket): EllieSt
       if (!row) return null;
       return { id: row.id, accountId: row.account_id, siteKey: row.site_key || null, cuiFlag: row.cui_flag === 1, state: parseJson(row.state, {}), questionSetVersion: row.question_set_version, sessionTokenHash: row.session_token_hash, createdAt: row.created_at, updatedAt: row.updated_at };
     },
+    async listSessionsByAccount(accountId) {
+      const { results } = await db.prepare("SELECT * FROM ellie_sessions WHERE account_id = ? ORDER BY created_at DESC").bind(accountId)
+        .all<{ id: string; account_id: string | null; site_key: string | null; cui_flag: number; state: string; question_set_version: string; session_token_hash: string | null; created_at: number; updated_at: number }>();
+      return results.map((row) => ({ id: row.id, accountId: row.account_id, siteKey: row.site_key || null, cuiFlag: row.cui_flag === 1, state: parseJson(row.state, {}), questionSetVersion: row.question_set_version, sessionTokenHash: row.session_token_hash, createdAt: row.created_at, updatedAt: row.updated_at }));
+    },
     async updateSession(id, state, updatedAt) {
       await db.prepare("UPDATE ellie_sessions SET state = ?, updated_at = ? WHERE id = ?").bind(JSON.stringify(state), updatedAt, id).run();
     },
@@ -378,6 +393,11 @@ export function createD1Store(db: D1Database, files?: EllieFilesBucket): EllieSt
         .first<{ id: string; session_id: string | null; account_id: string | null; brief: string; status: string; current_step: number; created_at: number; updated_at: number }>();
       if (!row) return null;
       return { id: row.id, sessionId: row.session_id, accountId: row.account_id, brief: row.brief, status: row.status, currentStep: row.current_step, createdAt: row.created_at, updatedAt: row.updated_at };
+    },
+    async listAnalysesByAccount(accountId) {
+      const { results } = await db.prepare("SELECT * FROM ellie_analyses WHERE account_id = ? ORDER BY created_at DESC").bind(accountId)
+        .all<{ id: string; session_id: string | null; account_id: string | null; brief: string; status: string; current_step: number; created_at: number; updated_at: number }>();
+      return results.map((row) => ({ id: row.id, sessionId: row.session_id, accountId: row.account_id, brief: row.brief, status: row.status, currentStep: row.current_step, createdAt: row.created_at, updatedAt: row.updated_at }));
     },
     async updateAnalysis(id, patch, updatedAt) {
       if (patch.status !== undefined && patch.currentStep !== undefined) {

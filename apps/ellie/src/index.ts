@@ -32,6 +32,16 @@
  * engine. With OPENROUTER_API_KEY absent, sessions answer with the
  * honest not-configured fallback — never a crash, never a fake reply.
  *
+ * THE APP SEAM (the agreed contract with the platform app's BFF,
+ * apps/app/functions/api/ellie in the website repo — pinned by
+ * tests/bff-seam.test.mjs here and the BFF seam battery there):
+ * the BFF calls THIS service's public route shapes (/api/chat/*,
+ * /api/analyses/*) with header `x-ellie-internal: <ELLIE_INTERNAL_KEY>`
+ * plus `x-ellie-account-id: <validated platform account id>` on every
+ * call. Session creation takes the account in the JSON body
+ * ({ accountId }). Messages take { text }. There are NO /internal/*
+ * routes; anything unmatched falls through to 404 { error: "not_found" }.
+ *
  * Keep ELLIE_VERSION in sync with this package's package.json version.
  */
 import {
@@ -41,7 +51,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.9.0";
+const ELLIE_VERSION = "0.10.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
@@ -180,7 +190,20 @@ function isInternal(env: Env, req: Request): boolean {
  * token, the internal path, or a credential whose account owns the
  * session. Returns the actor account id when resolved. */
 async function authorizeSession(env: Env, req: Request, sessionId: string): Promise<{ ok: boolean; accountId?: string; status?: number }> {
-  if (isInternal(env, req)) return { ok: true };
+  if (isInternal(env, req)) {
+    // BFF calls carry the validated account in x-ellie-account-id; when
+    // it is present the session must exist and belong to that account —
+    // the internal key alone never widens access to another account's
+    // session. Without the header the trusted-server behavior stands
+    // (the panel-adjacent internal callers rely on it).
+    const accountId = req.headers.get("x-ellie-account-id") ?? undefined;
+    if (!accountId) return { ok: true };
+    const store = ellie.ellieStoreFromEnv(env);
+    const session = await store.getSession(sessionId).catch(() => null);
+    if (!session) return { ok: false, status: 404 };
+    if (session.accountId !== accountId) return { ok: false, status: 403 };
+    return { ok: true, accountId };
+  }
   const engine = ellie.ellieEngineFromEnv(env);
   const auth = req.headers.get("authorization") ?? "";
   const bearer = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
@@ -209,6 +232,14 @@ async function authorizeSession(env: Env, req: Request, sessionId: string): Prom
 /** The shared gate for the analysis API: credential REQUIRED, scope
  * action:ellie_session, audience = the Ellie resource. */
 async function gateAnalysis(env: Env, req: Request): Promise<{ ok: boolean; accountId?: string; status?: number; detail?: string }> {
+  // The app-BFF path (see THE APP SEAM in the header): the internal key
+  // plus the validated account context establishes WHO is acting; the
+  // engine still enforces ownership, staff status, and payload hashes
+  // on every analysis operation, exactly as for credential callers.
+  if (isInternal(env, req)) {
+    const accountId = req.headers.get("x-ellie-account-id");
+    if (accountId) return { ok: true, accountId };
+  }
   const extracted = extractCredential({ headers: { authorization: req.headers.get("authorization") ?? undefined }, url: req.url });
   if (extracted.error) return { ok: false, status: 400, detail: "Credentials are accepted in headers only." };
   const presented = extracted.secret ?? extracted.token ?? extracted.oauthToken;
@@ -293,6 +324,27 @@ export default {
 
       const engine = ellie.ellieEngineFromEnv(env);
 
+      // List the caller's sessions (the app seam; internal only — the
+      // BFF validates the signed-in account and passes it as context).
+      if (path === "/api/chat/sessions" && req.method === "GET") {
+        if (!isInternal(env, req)) return json({ error: "internal_required", detail: "Listing sessions is an internal (app BFF) operation." }, 403);
+        const accountId = url.searchParams.get("accountId") ?? req.headers.get("x-ellie-account-id") ?? "";
+        if (!accountId) return json({ error: "account_required", detail: "accountId is required to list sessions." }, 400);
+        const store = ellie.ellieStoreFromEnv(env);
+        const rows = await store.listSessionsByAccount(accountId);
+        const sessions = [];
+        for (const s of rows) {
+          const state = (s.state ?? {}) as { currentIndex?: number; answers?: Record<string, unknown> };
+          const analysis = await store.getAnalysisBySession(s.id).catch(() => null);
+          sessions.push({
+            id: s.id, accountId: s.accountId, createdAt: s.createdAt, updatedAt: s.updatedAt,
+            currentIndex: state.currentIndex ?? 0, answerCount: Object.keys(state.answers ?? {}).length,
+            hasAnalysis: !!analysis,
+          });
+        }
+        return json({ sessions });
+      }
+
       if (path === "/api/chat/sessions" && req.method === "POST") {
         const body = (await req.json().catch(() => ({}))) as Record<string, unknown>;
         if (isInternal(env, req)) {
@@ -344,6 +396,20 @@ export default {
           }
           throw e;
         }
+      }
+
+      // Read a session's message history (the app seam read; the BFF
+      // re-reads after posting so the page renders from stored history).
+      const messagesMatch = path.match(/^\/api\/chat\/sessions\/([^/]+)\/messages$/);
+      if (messagesMatch && req.method === "GET") {
+        const [, sessionId] = messagesMatch;
+        const authz = await authorizeSession(env, req, sessionId);
+        if (!authz.ok) return json({ error: "session_refused", detail: "This session token or credential does not own that session." }, authz.status ?? 401);
+        const store = ellie.ellieStoreFromEnv(env);
+        const session = await store.getSession(sessionId).catch(() => null);
+        if (!session) return json({ error: "not_found", detail: "No such session." }, 404);
+        const messages = await store.listMessages(sessionId);
+        return json({ messages: messages.map((m) => ({ id: m.id, role: m.role, content: m.content, flags: m.flags, createdAt: m.createdAt })) });
       }
 
       const chatMatch = path.match(/^\/api\/chat\/sessions\/([^/]+)\/(messages|uploads|finalize|escalate)$/);
@@ -406,6 +472,16 @@ export default {
           if (!gone) return json({ error: "not_found", detail: "No such upload in this session." }, 404);
           return json({ ok: true, deleted: uploadId });
         }
+      }
+
+      // List the caller's analyses (the app seam read; same gate as
+      // the analysis item routes below).
+      if (path === "/api/analyses" && req.method === "GET") {
+        const gate = await gateAnalysis(env, req);
+        if (!gate.ok) return json({ error: "credential_refused", detail: gate.detail }, gate.status ?? 403);
+        const store = ellie.ellieStoreFromEnv(env);
+        const rows = await store.listAnalysesByAccount(gate.accountId!);
+        return json({ analyses: rows.map((a) => ({ id: a.id, sessionId: a.sessionId, status: a.status, createdAt: a.createdAt, updatedAt: a.updatedAt })) });
       }
 
       if (path === "/api/analyses" && req.method === "POST") {
