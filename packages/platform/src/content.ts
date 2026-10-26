@@ -12,6 +12,12 @@
  * The served track swaps the stand-in for the KV binding with no code
  * change. A document whose schemaVersion is not understood is REFUSED,
  * never served subtly wrong.
+ *
+ * PB-4 / G20 resilience: if the upstream fetch fails, the mirror serves
+ * the last document it successfully parsed (this isolate's last-good
+ * copy, then the KV copy) instead of returning a 502 for the pricing,
+ * content and FAQ routes. It only fails when no good copy exists
+ * anywhere. See loadContent below.
  */
 import { guardedFetch } from "./security.ts";
 
@@ -61,6 +67,13 @@ export interface ContentEnv {
 export const SUPPORTED_CONTENT_SCHEMA = 1;
 const KV_KEY = "content/v1.json";
 let memoryCache: ContentDoc | null = null;
+/** The last document this isolate successfully parsed. Kept separately
+ *  from memoryCache so resetContentCache() (drills/tests) cannot drop
+ *  it — it is the fallback that keeps an upstream failure from becoming
+ *  a 502. Content facts change rarely and are versioned, so serving the
+ *  last-good copy is honest degraded service; a hard failure is not. */
+let lastGoodDoc: ContentDoc | null = null;
+function remember(doc: ContentDoc): ContentDoc { memoryCache = doc; lastGoodDoc = doc; return doc; }
 
 export function parseContentDoc(raw: string): ContentDoc {
   const doc = JSON.parse(raw) as ContentDoc;
@@ -77,26 +90,40 @@ export async function loadContent(env: ContentEnv): Promise<ContentDoc> {
   if (memoryCache) return memoryCache;
   if (env.CONTENT_JSON_B64) {
     const bytes = Uint8Array.from(atob(env.CONTENT_JSON_B64), (ch) => ch.charCodeAt(0));
-    memoryCache = parseContentDoc(new TextDecoder().decode(bytes));
-    return memoryCache;
+    return remember(parseContentDoc(new TextDecoder().decode(bytes)));
   }
   if (env.CONTENT_JSON) {
-    memoryCache = parseContentDoc(env.CONTENT_JSON);
-    return memoryCache;
+    return remember(parseContentDoc(env.CONTENT_JSON));
   }
   if (env.CONTENT_KV) {
     const hit = await env.CONTENT_KV.get(KV_KEY);
-    if (hit) { memoryCache = parseContentDoc(hit); return memoryCache; }
+    if (hit) { return remember(parseContentDoc(hit)); }
   }
-  if (!env.CONTENT_SOURCE_URL) throw new Error("No content source configured (CONTENT_JSON, CONTENT_KV, or CONTENT_SOURCE_URL required)");
+  if (!env.CONTENT_SOURCE_URL) {
+    if (lastGoodDoc) return lastGoodDoc;
+    throw new Error("No content source configured (CONTENT_JSON, CONTENT_KV, or CONTENT_SOURCE_URL required)");
+  }
   // Layer 6: the fetch itself goes through the egress allowlist.
-  const res = await guardedFetch(env.CONTENT_SOURCE_URL);
-  if (!res.ok) throw new Error(`Content source fetch failed: HTTP ${res.status}`);
-  const raw = await res.text();
+  let raw: string;
+  try {
+    const res = await guardedFetch(env.CONTENT_SOURCE_URL);
+    if (!res.ok) throw new Error(`Content source fetch failed: HTTP ${res.status}`);
+    raw = await res.text();
+  } catch (e) {
+    // Upstream failure must not 502 the mirror (G20): serve the
+    // last-good document — this isolate's copy first, then the KV copy
+    // another isolate may have written — and only fail when no good
+    // copy exists anywhere.
+    if (lastGoodDoc) return lastGoodDoc;
+    if (env.CONTENT_KV) {
+      const hit = await env.CONTENT_KV.get(KV_KEY).catch(() => null);
+      if (hit) { try { return remember(parseContentDoc(hit)); } catch { /* fall through to the original error */ } }
+    }
+    throw e;
+  }
   const doc = parseContentDoc(raw);
   if (env.CONTENT_KV?.put) await env.CONTENT_KV.put(KV_KEY, raw).catch(() => undefined);
-  memoryCache = doc;
-  return doc;
+  return remember(doc);
 }
 
 /** Test/local helper: drop the in-isolate cache (e.g. between drills). */
