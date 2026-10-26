@@ -33,6 +33,24 @@ export const DISCLOSURE_MESSAGE =
 export const NOT_CONFIGURED_FALLBACK =
   "I'm Ellie, an AI technical analyst. My analysis service is still being set up, so I can't run a full analysis yet — I won't guess at one. What you've told me is saved with this conversation. You can talk to a human instead: use the escalation option and a person will pick this up from here.";
 
+/** WS-15 free-tier messages (plain language, the duck.ai pattern:
+ * name the limit, say it is a free-tier limit, say when it resets,
+ * and always offer the human route). The day boundary is midnight
+ * UTC — the same day the usage counters use. */
+export const FREE_DAILY_CAP_MESSAGE =
+  "You've reached today's limit for Ellie on the free plan. Ellie runs on a free model service right now, and that service only allows a limited number of conversations each day for each person. Your limit resets at midnight UTC. What you've told me so far is saved with this conversation, so you can pick up where you left off after the reset. If you'd rather not wait, you can talk to a human instead: use the escalation option and a person will pick this up from here.";
+
+export const FREE_UNAVAILABLE_MESSAGE =
+  "Ellie runs on a free model service right now, and that service isn't answering at the moment — this can happen when the free service is busy or has reached its own daily limit. Please try again later; the free service's limits reset at midnight UTC. What you've told me so far is saved with this conversation. If you'd rather not wait, you can talk to a human instead: use the escalation option and a person will pick this up from here.";
+
+/** Default per-user daily cap on the free route (model calls per
+ * user per UTC day). One full Ellie session uses roughly 21 calls
+ * (about 15 intake turns + 6 section drafts), so 30 covers a full
+ * session plus follow-ups. Configured per deployment with
+ * ELLIE_FREE_DAILY_USER_CAP; 0 disables the per-user cap (the global
+ * spend cap and the free service's own limits still apply). */
+export const DEFAULT_FREE_DAILY_USER_CAP = 30;
+
 /** The analyst system prompt: prompt CONTENT ported from production's
  * project-intake prompts (see prompts.ts for the ported-vs-fresh
  * record), composed with the leak-detection canary. */
@@ -92,6 +110,9 @@ export interface EngineOpts {
   store: EllieStore;
   modelClient: ModelClient;
   dailySpendCapUsd?: number;
+  /** Per-user daily cap on model calls (WS-15 free route). Defaults
+   * to DEFAULT_FREE_DAILY_USER_CAP; 0 disables it. */
+  freeDailyUserCap?: number;
   now?: () => number;
   systemPrompt?: string;
 }
@@ -104,6 +125,7 @@ const contentString = (c: unknown): string => (typeof c === "string" ? c : JSON.
 export function createEngine(opts: EngineOpts) {
   const now = opts.now ?? (() => Date.now());
   const cap = opts.dailySpendCapUsd ?? 5;
+  const freeUserCap = opts.freeDailyUserCap ?? DEFAULT_FREE_DAILY_USER_CAP;
   const systemPrompt = opts.systemPrompt ?? ELLIE_SYSTEM_PROMPT;
   const canaryMatch = systemPrompt.match(CANARY_RE)?.[0] ?? "ELLIE-CANARY-7F3A9";
   const store = opts.store;
@@ -116,6 +138,20 @@ export function createEngine(opts: EngineOpts) {
     const total = await store.usageTotalForDay(dayOf(now())).catch(() => 0);
     if (total >= cap) {
       throw new EllieError("spend_cap_exceeded", `Ellie's daily model spend cap of $${cap} has been reached for today, so no further model calls can be made today.`);
+    }
+  }
+  /** WS-15: has this user used up today's free-route calls? The
+   * count is the calls already made today (user messages + generated
+   * sections, from the store); reaching the cap refuses the NEXT
+   * call. Counting errors never block a conversation (treated as 0),
+   * matching the spend guard's discipline. */
+  async function assertFreeUserCapAllowed(s: { id: string; accountId: string | null }) {
+    if (!freeUserCap || freeUserCap <= 0) return;
+    if (typeof store.modelCallsForUserDay !== "function") return;
+    const dayStart = Date.parse(`${dayOf(now())}T00:00:00.000Z`);
+    const used = await store.modelCallsForUserDay(dayStart, { accountId: s.accountId, sessionId: s.id }).catch(() => 0);
+    if (used >= freeUserCap) {
+      throw new EllieError("free_daily_cap_exceeded", FREE_DAILY_CAP_MESSAGE);
     }
   }
   /** Screen + filter a model reply. Returns clean text, or null when the
@@ -187,6 +223,24 @@ export function createEngine(opts: EngineOpts) {
       await audit({ eventType: "security.screening", action: "input_flagged", actorAccountId: ctx.accountId ?? s.accountId, detail: { sessionId, reasons: screening.reasons, payload: text.slice(0, 2000) } });
     }
     await assertSpendAllowed();
+    // WS-15 per-user free cap: checked BEFORE this turn's model call
+    // (the count is the calls already made today, so a cap of N
+    // allows exactly N calls). Hitting the cap is a normal answer,
+    // not an error surface: the user's message is still saved to the
+    // conversation history, the reply is the plain-language limit
+    // message, and the intake does not advance — after the reset the
+    // user picks up at the same question.
+    try {
+      await assertFreeUserCapAllowed(s);
+    } catch (e) {
+      if (e instanceof EllieError && e.code === "free_daily_cap_exceeded") {
+        const reply = FREE_DAILY_CAP_MESSAGE;
+        await store.appendMessage({ id: crypto.randomUUID(), sessionId, role: "user", content: text, flags: screening.reasons, createdAt: now() });
+        await store.appendMessage({ id: crypto.randomUUID(), sessionId, role: "assistant", content: reply, flags: ["free_daily_cap_exceeded"], createdAt: now() });
+        return { reply, modelConfigured: true, freeLimitReached: true, flagged: screening.reasons, outline: planOutline(state), state };
+      }
+      throw e;
+    }
     await store.appendMessage({ id: crypto.randomUUID(), sessionId, role: "user", content: text, flags: screening.reasons, createdAt: now() });
     // Extract the answer for the current intake field (deterministic
     // state machine — the model never decides what was captured).
@@ -211,6 +265,16 @@ export function createEngine(opts: EngineOpts) {
         await store.appendMessage({ id: crypto.randomUUID(), sessionId, role: "assistant", content: reply, flags: ["model_not_configured"], createdAt: now() });
         await store.updateSession(sessionId, state as unknown as Record<string, unknown>, now());
         return { reply, modelConfigured, flagged: screening.reasons, outline: planOutline(state), state };
+      }
+      if (e instanceof EllieError && e.code === "model_unavailable") {
+        // WS-15: every free route failed (busy / rate-limited /
+        // no eligible endpoint under the deny pin). Paid fallback is
+        // never silent, so the answer is the plain-language free
+        // message — not the gateway's raw error.
+        reply = FREE_UNAVAILABLE_MESSAGE;
+        await store.appendMessage({ id: crypto.randomUUID(), sessionId, role: "assistant", content: reply, flags: ["model_unavailable"], createdAt: now() });
+        await store.updateSession(sessionId, state as unknown as Record<string, unknown>, now());
+        return { reply, modelConfigured, freeUnavailable: true, flagged: screening.reasons, outline: planOutline(state), state };
       }
       throw e;
     }
@@ -381,6 +445,12 @@ export function createEngine(opts: EngineOpts) {
     const section = SECTION_ORDER[a.currentStep];
     if (!section) { await store.updateAnalysis(analysisId, { status: "complete" }, now()); return presentAnalysis(analysisId, ctx); }
     await assertSpendAllowed();
+    // WS-15 per-user free cap for generation calls. The analysis is
+    // left in "generating" (not blocked): after the midnight UTC
+    // reset the next read resumes exactly where it stopped. The
+    // thrown error's message IS the plain-language limit message,
+    // which the Workers surface as the response detail.
+    await assertFreeUserCapAllowed({ id: a.sessionId ?? "", accountId: a.accountId });
     let briefObj: { answers: Record<string, string>; uploads: { filename: string; extractedText: string }[] } = { answers: {}, uploads: [] };
     try { briefObj = JSON.parse(a.brief); } catch { /* brief stays empty */ }
     const todayIso = new Date(now()).toISOString().slice(0, 10);
@@ -400,6 +470,13 @@ export function createEngine(opts: EngineOpts) {
         await store.updateAnalysis(analysisId, { status: "blocked_model_not_configured" }, now());
         const presented = await presentAnalysis(analysisId, ctx);
         return { ...presented, status: "blocked_model_not_configured" };
+      }
+      if (e instanceof EllieError && e.code === "model_unavailable") {
+        // WS-15: free routes unavailable mid-generation. Leave the
+        // analysis in "generating" so a later read can resume, and
+        // surface the plain-language free message as the error
+        // detail instead of the gateway's raw refusal.
+        throw new EllieError("model_unavailable", FREE_UNAVAILABLE_MESSAGE);
       }
       throw e;
     }

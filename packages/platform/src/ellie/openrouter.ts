@@ -15,6 +15,17 @@
  *    refuses honestly with a typed `cui_no_endpoint` error — it never
  *    silently downgrades to a non-CUI route.
  *
+ * Free-first rule (WS-15, 2026-10-26): the ACTIVE lists are the free
+ * (`:free`) models. Paid models may be LISTED in configuration
+ * (paidTextModels / paidVisionModels, from ELLIE_MODELS_PAID_TEXT /
+ * ELLIE_MODELS_PAID_VISION) so a future, explicit decision can enable
+ * them, but they are NEVER tried as a silent fallback: this client
+ * only calls a paid model when `allowPaidFallback` is set true by an
+ * explicit configuration act (ELLIE_ALLOW_PAID_FALLBACK="true"). With
+ * it unset/false and every free model failing, chat() throws
+ * `model_unavailable` and the engine answers with the plain-language
+ * free-tier limit message — no paid call, no opaque error.
+ *
  * No API key configured is NOT an exception the caller must catch as a
  * crash: chat() throws the typed `model_not_configured` error and the
  * engine answers with the honest fallback (see engine.ts).
@@ -24,6 +35,7 @@ import { allowedEgress } from "../security.ts";
 export type EllieErrorCode =
   | "model_not_configured"
   | "spend_cap_exceeded"
+  | "free_daily_cap_exceeded"
   | "cui_no_endpoint"
   | "model_unavailable"
   | "not_staff"
@@ -64,19 +76,65 @@ export interface OpenRouterOpts {
   apiKey?: string;
   textModels: string[];
   visionModels: string[];
+  /** Paid models LISTED in configuration. Inert unless
+   * allowPaidFallback is explicitly true — see the free-first rule
+   * in this module's header. Listing a model here never, by itself,
+   * makes it reachable. */
+  paidTextModels?: string[];
+  paidVisionModels?: string[];
+  allowPaidFallback?: boolean;
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
   onUsage?: (info: { day: string; model: string; costUsd: number }) => Promise<void>;
+}
+
+/** A model id is on the free route exactly when OpenRouter marks it
+ * with the `:free` suffix (zero per-token price). */
+export function isFreeModel(model: string): boolean {
+  return model.trim().endsWith(":free");
 }
 
 export function parseModelList(raw: string | undefined, fallback: string[]): string[] {
   const list = (raw ?? "").split(",").map((s) => s.trim()).filter(Boolean);
   return list.length ? list : [...fallback];
 }
-export const DEFAULT_TEXT_MODELS = ["meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o-mini"];
-export const DEFAULT_VISION_MODELS = ["meta-llama/llama-3.2-11b-vision-instruct", "openai/gpt-4o-mini"];
+/** Active (free) defaults — WS-15 survey, 2026-10-26 (see the WS-15
+ * record for the full table and probe evidence):
+ *  - google/gemma-4-31b-it:free is the primary. Its one live endpoint
+ *    (Google AI Studio) was at 100% uptime in the OpenRouter catalog
+ *    on survey day, it is multimodal (text + image in), and the
+ *    program's own 2026-10-25 routing probe found it eligible under
+ *    the pinned data_collection: deny (the account privacy lock
+ *    excludes free endpoints that train on data; this route answered
+ *    under the pin — a 429 from upstream rate limits, not a routing
+ *    refusal).
+ *  - google/gemma-4-26b-a4b-it:free is the ordered fallback: same
+ *    provider, same catalog posture, also multimodal.
+ *  - meta-llama/llama-3.3-70b-instruct:free had ZERO live endpoints
+ *    in the catalog on survey day, so it cannot be the primary.
+ *  - The Nvidia Nemotron free routes are NOT listed: the 2026-10-25
+ *    probe found the Nemotron free endpoint excluded by the account
+ *    lock because it trains on data, and on survey day its catalog
+ *    endpoint showed 0% uptime. Unproven routes stay out.
+ * The deny pin on every body remains the enforcement: a free endpoint
+ * that collects data cannot serve a pinned request — OpenRouter
+ * returns no eligible endpoint instead of silently routing to it. */
+export const DEFAULT_TEXT_MODELS = ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free"];
+export const DEFAULT_VISION_MODELS = ["google/gemma-4-31b-it:free", "google/gemma-4-26b-a4b-it:free"];
+/** Paid models, listed in configuration only. These are the models
+ * Ellie ran on before WS-15; they stay named so a future explicit
+ * decision can re-enable them, and they are never called while
+ * allowPaidFallback is off (the default). */
+export const DEFAULT_PAID_TEXT_MODELS = ["meta-llama/llama-3.3-70b-instruct", "openai/gpt-4o-mini"];
+export const DEFAULT_PAID_VISION_MODELS = ["meta-llama/llama-3.2-11b-vision-instruct", "openai/gpt-4o-mini"];
 
 export class OpenRouterClient implements ModelClient {
   readonly configured: boolean;
+  /** The paid models listed in configuration (never called unless
+   * allowPaidFallback was explicitly enabled). Exposed read-only so
+   * tests and diagnostics can prove what is listed vs. what is live. */
+  readonly paidTextModels: string[];
+  readonly paidVisionModels: string[];
+  readonly allowPaidFallback: boolean;
   private apiKey?: string;
   private textModels: string[];
   private visionModels: string[];
@@ -87,8 +145,21 @@ export class OpenRouterClient implements ModelClient {
     this.configured = !!this.apiKey;
     this.textModels = opts.textModels.length ? opts.textModels : [...DEFAULT_TEXT_MODELS];
     this.visionModels = opts.visionModels.length ? opts.visionModels : [...DEFAULT_VISION_MODELS];
+    this.paidTextModels = [...(opts.paidTextModels ?? DEFAULT_PAID_TEXT_MODELS)];
+    this.paidVisionModels = [...(opts.paidVisionModels ?? DEFAULT_PAID_VISION_MODELS)];
+    this.allowPaidFallback = opts.allowPaidFallback === true;
     this.fetchImpl = opts.fetchImpl ?? ((url, init) => fetch(url, init));
     this.onUsage = opts.onUsage;
+  }
+
+  /** The models one chat() call may actually try, in order. The paid
+   * list joins the end ONLY under the explicit opt-in; otherwise the
+   * active list is exactly the configured (free) list. */
+  private modelsFor(req: ChatRequest): string[] {
+    const active = req.vision ? this.visionModels : this.textModels;
+    if (!this.allowPaidFallback) return active;
+    const paid = req.vision ? this.paidVisionModels : this.paidTextModels;
+    return [...active, ...paid.filter((m) => !active.includes(m))];
   }
 
   /** The request body for ONE model attempt. CMP-10 asserts on this
@@ -116,7 +187,7 @@ export class OpenRouterClient implements ModelClient {
     if (!this.apiKey) {
       throw new EllieError("model_not_configured", "No OpenRouter API key is configured for Ellie (OPENROUTER_API_KEY is not set), so no model call can be made.");
     }
-    const models = req.vision ? this.visionModels : this.textModels;
+    const models = this.modelsFor(req);
     const url = `${OPENROUTER_BASE}/chat/completions`;
     if (!allowedEgress(url).allowed) throw new EllieError("model_unavailable", "Egress refused: the model gateway is not on the allowlist.");
     let lastStatus = 0;
@@ -149,7 +220,10 @@ export class OpenRouterClient implements ModelClient {
     if (req.cui) {
       throw new EllieError("cui_no_endpoint", `No eligible endpoint answered this CUI session (last status ${lastStatus || "none"}). The call is refused rather than downgraded: CUI sessions run only on the configured deny-collection profile.`);
     }
-    throw new EllieError("model_unavailable", `No configured model answered (last status ${lastStatus || "none"}).`);
+    const paidNote = !this.allowPaidFallback && (req.vision ? this.paidVisionModels : this.paidTextModels).length
+      ? " Paid models are listed in configuration but paid fallback is not enabled, so none was tried."
+      : "";
+    throw new EllieError("model_unavailable", `No configured model answered (last status ${lastStatus || "none"}).${paidNote}`);
   }
 }
 
