@@ -67,3 +67,15 @@ jobs:
           node-version-file: .nvmrc
       - name: Validate connector registry and config examples
         run: node tools/validate-connectors.mjs
+
+  turnstile:
+    name: Turnstile coverage registry (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Every form and POST route must carry a Turnstile disposition
+        run: node tools/check-turnstile.mjs

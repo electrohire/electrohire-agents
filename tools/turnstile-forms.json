@@ -1,0 +1,172 @@
+{
+  "version": 1,
+  "standard": "Cloudflare Turnstile, Managed mode, server-side Siteverify, single-use tokens, fail-closed (plan P-2) for HUMAN forms; machine surfaces are credential-gated instead (spec 004). Checked by tools/check-turnstile.mjs in CI.",
+  "updated": "2026-10-26",
+  "entries": [
+    {
+      "id": "ellie-anonymous-session",
+      "kind": "form",
+      "surface": "ellie",
+      "host": "ellie-beta.electrohire.com (+ embedded on beta.electrohire.com)",
+      "name": "Ellie anonymous session creation (panel, embedded website chat)",
+      "disposition": "protected",
+      "widget": {
+        "name": "ElectroHire Ellie chat (beta)",
+        "sitekey": "0x4AAAAAAFlfAE9BKN-9ku27"
+      },
+      "forms": [
+        {
+          "file": "apps/ellie/assets/panel/index.html",
+          "id": "composer"
+        }
+      ],
+      "routes": [
+        "POST /api/chat/sessions"
+      ],
+      "clientEvidence": [
+        {
+          "file": "apps/ellie/assets/panel-assets/panel.js",
+          "pattern": "turnstile\\.render"
+        },
+        {
+          "file": "apps/ellie/assets/panel-assets/panel.js",
+          "pattern": "turnstileToken"
+        },
+        {
+          "file": "apps/ellie/assets/panel/index.html",
+          "pattern": "id=\"turnstile\""
+        }
+      ],
+      "serverEvidence": [
+        {
+          "file": "apps/ellie/src/index.ts",
+          "pattern": "verifyTurnstile\\(env, typeof body\\.turnstileToken"
+        },
+        {
+          "file": "apps/ellie/src/index.ts",
+          "pattern": "ELLIE_TURNSTILE_SITE_KEY"
+        }
+      ]
+    },
+    {
+      "id": "ellie-internal-session",
+      "kind": "route",
+      "surface": "ellie",
+      "host": "ellie-beta.electrohire.com",
+      "name": "Ellie session creation + listing via the internal (app BFF) mode of the same route",
+      "disposition": "excluded",
+      "reason": "Server-to-server only: requires the ELLIE_INTERNAL_KEY secret plus a BFF-validated signed-in account context. The anonymous mode of this route is the protected one (ellie-anonymous-session).",
+      "forms": [],
+      "routes": [
+        "POST /api/chat/sessions",
+        "GET /api/chat/sessions"
+      ],
+      "clientEvidence": [],
+      "serverEvidence": [
+        {
+          "file": "apps/ellie/src/index.ts",
+          "pattern": "isInternal\\(env, req\\)"
+        }
+      ]
+    },
+    {
+      "id": "ellie-session-actions",
+      "kind": "route",
+      "surface": "ellie",
+      "host": "ellie-beta.electrohire.com",
+      "name": "In-session Ellie actions: messages, uploads, finalize, escalate (support ticket), upload read/delete",
+      "disposition": "excluded",
+      "reason": "Possession credential: every action requires the session token issued at (Turnstile-gated) creation, or the internal key for the signed-in path. Escalate files the support ticket from inside an already-gated session.",
+      "forms": [],
+      "routes": [
+        "POST /api/chat/sessions/:id/messages",
+        "POST /api/chat/sessions/:id/uploads",
+        "POST /api/chat/sessions/:id/finalize",
+        "POST /api/chat/sessions/:id/escalate"
+      ],
+      "clientEvidence": [],
+      "serverEvidence": [
+        {
+          "file": "apps/ellie/src/index.ts",
+          "pattern": "authorizeSession\\(env, req, sessionId\\)"
+        }
+      ]
+    },
+    {
+      "id": "ellie-analyses-api",
+      "kind": "route",
+      "surface": "ellie",
+      "host": "ellie-beta.electrohire.com",
+      "name": "Ellie analyses API (create, approve, edit)",
+      "disposition": "excluded",
+      "reason": "Credential-gated machine surface: API key, OAuth token, or the internal key (gateAnalysis), with the engine re-checking account ownership and staff status for approvals.",
+      "forms": [],
+      "routes": [
+        "POST /api/analyses",
+        "POST /api/analyses/:id/approve",
+        "POST /api/analyses/:id/edit"
+      ],
+      "clientEvidence": [],
+      "serverEvidence": [
+        {
+          "file": "apps/ellie/src/index.ts",
+          "pattern": "gateAnalysis\\(env, req\\)"
+        }
+      ]
+    },
+    {
+      "id": "api-actions",
+      "kind": "route",
+      "surface": "api",
+      "host": "api-beta.electrohire.com",
+      "name": "API action routes (newsletter-subscribe, support-ticket, ellie-session)",
+      "disposition": "excluded",
+      "reason": "Machine endpoints behind the shared credential gate (API key or OAuth token with the named scope, C-10/C-13). Spec 004: Turnstile never applies to agent traffic \u2014 a non-browser client cannot complete a browser challenge. The human consent that can authorize these actions is itself Turnstile-protected (website repo registry, app-oauth-consent).",
+      "forms": [],
+      "routes": [
+        "POST /v1/actions/newsletter-subscribe",
+        "POST /v1/actions/support-ticket",
+        "POST /v1/actions/ellie-session"
+      ],
+      "clientEvidence": [],
+      "serverEvidence": []
+    },
+    {
+      "id": "api-tools",
+      "kind": "route",
+      "surface": "api",
+      "host": "api-beta.electrohire.com",
+      "name": "API tool routes (cost estimator, scoping checklist, timeline calculator)",
+      "disposition": "excluded",
+      "reason": "Machine compute endpoints for agent clients behind the same credential gate; no human form exists on this surface (spec 004).",
+      "forms": [],
+      "routes": [
+        "POST /v1/tools/cost-estimator",
+        "POST /v1/tools/scoping-checklist",
+        "POST /v1/tools/timeline-calculator"
+      ],
+      "clientEvidence": [],
+      "serverEvidence": []
+    },
+    {
+      "id": "mcp-endpoint",
+      "kind": "route",
+      "surface": "mcp",
+      "host": "mcp-beta.electrohire.com",
+      "name": "MCP server endpoint (all tools)",
+      "disposition": "excluded",
+      "reason": "Machine protocol endpoint: API-key/OAuth credentials, quotas, and per-tool kill switches are the controls (spec 004). Browser challenges must never sit in front of agent traffic.",
+      "forms": [],
+      "routes": [
+        "POST /mcp"
+      ],
+      "clientEvidence": [],
+      "serverEvidence": [
+        {
+          "file": "apps/mcp/src/index.ts",
+          "pattern": "url\\.pathname !== \"/mcp\""
+        }
+      ]
+    }
+  ]
+}
