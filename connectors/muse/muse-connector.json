@@ -1,6 +1,6 @@
 {
   "name": "electrohire",
-  "server_url": "https://mcp.electrohire.com/mcp",
+  "server_url": "https://mcp-beta.electrohire.com/mcp",
   "transport": "streamable-http",
   "authorization": "Bearer ${ELECTROHIRE_API_KEY}",
   "skill": "electrohire-basics",

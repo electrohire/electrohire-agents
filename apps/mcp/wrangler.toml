@@ -19,6 +19,12 @@ database_id = "c7aea331-7159-438c-a957-51632558a3c9"
 # Content mirror source (C-01): the website build emits this document.
 # Local dev overrides with CONTENT_JSON via wrangler --var / .dev.vars.
 CONTENT_SOURCE_URL = "https://beta.electrohire.com/content/v1.json"
+# WS-5 (2026-10-26): the public JSON mirrors for blog + events hang off
+# the beta site (published-only routes, public through the beta gate).
+# The previous source host (electrohire-website-staging.pages.dev) was
+# retired with the staging Pages project; the content document now comes
+# from the beta host the gate explicitly passes through.
+PUBLIC_CONTENT_BASE_URL = "https://beta.electrohire.com"
 # Phase E: the Ellie MCP tools (electrohire_ellie_session /
 # electrohire_ellie_analysis) run the shared Ellie engine against the
 # same D1 binding. OPENROUTER_API_KEY is a SECRET (placed separately

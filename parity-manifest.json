@@ -37,6 +37,24 @@
         "reason": "Platform endpoint. Serves the OpenAPI 3.1 document generated from the API's route schemas; live in the scaffold."
       },
       {
+        "name": "GET /v1/blog",
+        "kind": "route",
+        "method": "GET",
+        "path": "/v1/blog",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "WS-5 (2026-10-26): blog endpoints ship now that Phase B / PB-4 blog data exists — published posts only, mirrored from the website's public JSON (/api/public/blog); scope read:blog."
+      },
+      {
+        "name": "GET /v1/blog/{slug}",
+        "kind": "route",
+        "method": "GET",
+        "path": "/v1/blog/{slug}",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "WS-5 (2026-10-26): one published post, full text, mirrored from the website's public JSON; a draft or unpublished slug 404s on every surface. Scope read:blog."
+      },
+      {
         "name": "GET /v1/content",
         "kind": "route",
         "method": "GET",
@@ -62,6 +80,15 @@
         "file": "apps/api/src/index.ts",
         "state": "exposed",
         "reason": "Phase E (E-02/E-08): Ellie analysis status/result; advances one generation step per read while generating; only the owning account's credential may read it."
+      },
+      {
+        "name": "GET /v1/events",
+        "kind": "route",
+        "method": "GET",
+        "path": "/v1/events",
+        "file": "apps/api/src/index.ts",
+        "state": "exposed",
+        "reason": "WS-5 (2026-10-26): published events (PB-4 G14), mirrored from the website's public JSON (/api/public/events); scope read:events."
       },
       {
         "name": "GET /v1/faq",
@@ -168,6 +195,13 @@
         "reason": "Phase C1 MCP mirror of the cost estimator tool endpoint; range + assumptions only."
       },
       {
+        "name": "electrohire_get_blog_post",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "WS-5 (2026-10-26): MCP mirror of GET /v1/blog/{slug} — full text of one published post; scope read:blog."
+      },
+      {
         "name": "electrohire_get_faq",
         "kind": "tool",
         "file": "apps/mcp/src/index.ts",
@@ -187,6 +221,20 @@
         "file": "apps/mcp/src/index.ts",
         "state": "exposed",
         "reason": "Phase C1 MCP mirror of GET /v1/content (mirrored website content). Local track; served acceptance pending the deploy remedy."
+      },
+      {
+        "name": "electrohire_list_blog_posts",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "WS-5 (2026-10-26): MCP mirror of GET /v1/blog — published posts, metadata only; scope read:blog."
+      },
+      {
+        "name": "electrohire_list_events",
+        "kind": "tool",
+        "file": "apps/mcp/src/index.ts",
+        "state": "exposed",
+        "reason": "WS-5 (2026-10-26): MCP mirror of GET /v1/events — published events; scope read:events."
       },
       {
         "name": "electrohire_newsletter_subscribe",

@@ -85,3 +85,36 @@ Removals deprecate before they disappear:
 Whoever changes a feature owns its parity line. Reviewers check the manifest
 diff the way they check a schema diff: a feature change with no parity
 assessment — no state, no reason, no pending pointer — is not ready to merge.
+
+## The standing rule, and the gate that enforces it (2026-10-26)
+
+The owner made the parity rule absolute on 2026-10-26:
+
+> **No system change ships without its MCP + skills updates in the same
+> change.** If a platform change alters anything an agent can see or do,
+> the MCP tools, the served OpenAPI, the skill packages, and the
+> connector guides are updated in that same change — or the change does
+> not ship. This is enforced by CI, not by memory.
+
+The enforcement is the **coverage gate**, `tools/check-coverage.mjs`,
+which runs as a blocking CI job in this repo. It enumerates the served
+OpenAPI operations (from the API code), the MCP tools (from the MCP
+code), and every tool/endpoint reference in the skills, connector
+guides, docs, app READMEs, and the Python SDK, and it **fails** when
+they diverge from `tools/coverage-map.json`:
+
+- an operation with no MCP tool and no recorded reason it has none;
+- a tool no operation maps to and no recorded reason;
+- a skill, guide, doc, or SDK reference to a tool or endpoint that
+  does not exist;
+- a tool or operation that shipped but no doc surface mentions;
+- the API-key scope catalog and the OAuth offered scopes disagreeing.
+
+The website repo carries the mirror-image gate
+(`scripts/check-agent-coverage.mjs` against
+`specs/004-api-mcp/agent-surface-inventory.json`): every platform
+capability there carries a disposition — exposed (naming the operation,
+tool, and scope), not exposed (with the reason), or pending (with the
+pointer) — and its CI fails the same way. The two files name the same
+operations and tools; changing one side without the other is exactly
+the divergence both gates exist to catch.

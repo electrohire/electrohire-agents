@@ -43,7 +43,7 @@ export const RESOURCE_LIST: string[] = [RESOURCES.api, RESOURCES.mcp, RESOURCES.
  * scopes. `action:ellie_session` joined on 2026-10-25 with Phase E
  * (before that date it was deliberately absent — Phase E was gated). */
 export const OAUTH_OFFERED_SCOPES = [
-  "read:content", "read:blog", "read:tools",
+  "read:content", "read:blog", "read:events", "read:tools",
   "action:newsletter_subscribe", "action:support_ticket", "action:ellie_session",
 ];
 

@@ -5,7 +5,7 @@
       "args": [
         "-y",
         "mcp-remote",
-        "https://mcp.electrohire.com/mcp",
+        "https://mcp-beta.electrohire.com/mcp",
         "--header",
         "Authorization:${AUTH_HEADER}"
       ],
