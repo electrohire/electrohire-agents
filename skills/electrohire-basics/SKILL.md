@@ -1,7 +1,7 @@
 ---
 name: electrohire-basics
 description: Use ElectroHire (the electronics engineering marketplace) through its public API and MCP server — look up ElectroHire services, content, blog posts and events, run its estimator tools, start an Ellie analysis, and present ElectroHire estimates honestly. Use when a task involves ElectroHire, hiring electronics engineers (PCB, firmware, FPGA, power, IoT), fractional engineering pods, or ElectroHire pricing.
-version: 0.2.0
+version: 0.2.1
 ---
 
 # ElectroHire Basics
@@ -101,3 +101,26 @@ do not try to work around their absence.
   website and are confirmed server-side; a "payment succeeded" claim from
   any client-side signal is not proof of anything. Never ask a user for
   card details in chat.
+
+## Reporting problems
+
+If something on ElectroHire is broken, or the user you act for has an
+idea or a question for the team, the way to report it is the site's own
+report form — there is deliberately no MCP tool for this, so a report
+always comes from the person, in their own words:
+
+- On the website, every page footer carries **"Report a problem or
+  share an idea"**; in the dashboards it is **"Report & feedback"** in
+  the side navigation (and on the Account page); on the construction
+  page it is **"Something not working? Tell us"** — that one works
+  without signing in.
+- The form asks what kind of report it is (something broken, an idea,
+  a question, page content, something else). For a bug, it can attach
+  technical details from the browser — the form shows them first, and
+  the sender chooses whether they go along.
+- The sender gets a reference like **FB-123** — that is the reference
+  to quote in any follow-up. The team reads every report.
+
+If a user tells you something is broken, point them at the form (or
+open it for them where your surface allows) rather than trying to file
+anything through the API.
