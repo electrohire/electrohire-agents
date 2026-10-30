@@ -20,7 +20,7 @@ import {
  *
  * Keep API_VERSION in sync with this package's package.json version.
  */
-const API_VERSION = "0.4.0";
+const API_VERSION = "0.5.0";
 
 type Env = ContentEnv & GuardEnv & KeysEnv;
 const AUTH_ISSUER = "https://auth-beta.electrohire.com";

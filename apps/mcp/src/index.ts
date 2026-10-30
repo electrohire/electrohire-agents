@@ -20,7 +20,7 @@ import {
  *
  * Keep MCP_SERVER_VERSION in sync with this package's package.json version.
  */
-const MCP_SERVER_VERSION = "0.4.0";
+const MCP_SERVER_VERSION = "0.5.0";
 
 type Env = ContentEnv & GuardEnv & KeysEnv;
 type Cred = { kind: "api_key"; secret: string } | { kind: "oauth_double"; token: string } | { kind: "oauth_token"; token: string } | null;
