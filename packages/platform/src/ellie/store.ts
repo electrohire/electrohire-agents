@@ -139,6 +139,15 @@ export interface EllieStore {
   updateOutputApproval(id: string, approvedBy: string, approvedAt: number): Promise<void>;
   addUsage(day: string, model: string, costUsd: number): Promise<void>;
   usageTotalForDay(day: string): Promise<number>;
+  /** WS-15 per-user free-route usage: how many model calls one user
+   * has used on/after `sinceMs` (UTC day start). One model call is
+   * counted per user-role message (each drives one chat call) plus
+   * one per generated analysis output (each advance drives one call).
+   * Counted from the tables that already exist — no new schema.
+   * Identity: the account id when the session is signed-in; for an
+   * anonymous website session, that session itself is the "user"
+   * (the panel visitor has no account to count across). */
+  modelCallsForUserDay(sinceMs: number, who: { accountId?: string | null; sessionId?: string | null }): Promise<number>;
   isStaff(accountId: string): Promise<boolean>;
   createTicket(input: { requesterName: string; requesterEmail: string; subject: string; body: string; context: string; sourceRoute: string }): Promise<TicketRow>;
   appendAudit(ev: AuditEventInput): Promise<void>;
@@ -235,6 +244,20 @@ export function createMemoryStore(opts: MemoryStoreOpts = {}): EllieStore & {
       let total = 0;
       for (const [k, v] of usage.entries()) if (k.startsWith(day + "|")) total += v.cost;
       return total;
+    },
+    async modelCallsForUserDay(sinceMs: number, who: { accountId?: string | null; sessionId?: string | null }) {
+      let count = 0;
+      for (const m of messages) {
+        if (m.role !== "user" || m.createdAt < sinceMs) continue;
+        const s = sessions.get(m.sessionId);
+        if (who.accountId ? s?.accountId === who.accountId : m.sessionId === who.sessionId) count += 1;
+      }
+      for (const o of outputs) {
+        if (o.createdAt < sinceMs) continue;
+        const a = analyses.get(o.analysisId);
+        if (who.accountId ? a?.accountId === who.accountId : a?.sessionId === who.sessionId) count += 1;
+      }
+      return count;
     },
     async isStaff(accountId: string) { return staff.has(accountId); },
     async createTicket(input: { requesterName: string; requesterEmail: string; subject: string; body: string; context: string; sourceRoute: string }) {
@@ -433,6 +456,25 @@ export function createD1Store(db: D1Database, files?: EllieFilesBucket): EllieSt
     async usageTotalForDay(day) {
       const row = await db.prepare("SELECT COALESCE(SUM(cost_usd), 0) AS total FROM ellie_usage WHERE day = ?").bind(day).first<{ total: number }>();
       return row?.total ?? 0;
+    },
+    async modelCallsForUserDay(sinceMs, who) {
+      // Existing tables only (sessions/messages for chat calls,
+      // analyses/outputs for generation calls) — see the interface
+      // comment. A counting failure must never break the conversation:
+      // the caller also catches, and this returns 0 on any error.
+      try {
+        if (who.accountId) {
+          const m = await db.prepare("SELECT COUNT(*) AS n FROM ellie_messages msg JOIN ellie_sessions s ON msg.session_id = s.id WHERE s.account_id = ? AND msg.role = 'user' AND msg.created_at >= ?").bind(who.accountId, sinceMs).first<{ n: number }>();
+          const o = await db.prepare("SELECT COUNT(*) AS n FROM ellie_outputs outp JOIN ellie_analyses a ON outp.analysis_id = a.id WHERE a.account_id = ? AND outp.created_at >= ?").bind(who.accountId, sinceMs).first<{ n: number }>();
+          return (m?.n ?? 0) + (o?.n ?? 0);
+        }
+        if (who.sessionId) {
+          const m = await db.prepare("SELECT COUNT(*) AS n FROM ellie_messages WHERE session_id = ? AND role = 'user' AND created_at >= ?").bind(who.sessionId, sinceMs).first<{ n: number }>();
+          const o = await db.prepare("SELECT COUNT(*) AS n FROM ellie_outputs outp JOIN ellie_analyses a ON outp.analysis_id = a.id WHERE a.session_id = ? AND outp.created_at >= ?").bind(who.sessionId, sinceMs).first<{ n: number }>();
+          return (m?.n ?? 0) + (o?.n ?? 0);
+        }
+        return 0;
+      } catch { return 0; }
     },
     async isStaff(accountId) {
       try {

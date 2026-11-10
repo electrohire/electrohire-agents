@@ -51,7 +51,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.11.0";
+const ELLIE_VERSION = "0.12.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
@@ -72,7 +72,7 @@ const json = (body: unknown, status = 200, headers: Record<string, string> = {})
 const errBody = (e: unknown): { status: number; body: { error: string; detail: string } } => {
   if (e instanceof ellie.EllieError) {
     const status = e.code === "not_found" ? 404 : e.code === "forbidden" ? 403 : e.code === "not_staff" ? 403
-      : e.code === "payload_hash_mismatch" ? 409 : e.code === "spend_cap_exceeded" ? 429
+      : e.code === "payload_hash_mismatch" ? 409 : e.code === "spend_cap_exceeded" || e.code === "free_daily_cap_exceeded" ? 429
       : e.code === "unsupported_upload_type" || e.code === "upload_too_large" ? 400
       : e.code === "model_not_configured" || e.code === "cui_no_endpoint" || e.code === "model_unavailable" ? 503 : 400;
     return { status, body: { error: e.code, detail: e.message } };
@@ -457,7 +457,7 @@ export default {
         if (action === "messages") {
           const body = (await req.json().catch(() => ({}))) as { text?: string };
           const turn = await engine.handleMessage(sessionId, String(body.text ?? ""), { accountId: authz.accountId });
-          return json({ reply: turn.reply, modelConfigured: turn.modelConfigured, outline: turn.outline, flagged: turn.flagged });
+          return json({ reply: turn.reply, modelConfigured: turn.modelConfigured, outline: turn.outline, flagged: turn.flagged, freeLimitReached: "freeLimitReached" in turn ? turn.freeLimitReached : undefined, freeUnavailable: "freeUnavailable" in turn ? turn.freeUnavailable : undefined });
         }
         if (action === "uploads") {
           const form = await req.formData().catch(() => null);
