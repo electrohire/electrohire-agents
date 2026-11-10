@@ -1,19 +1,39 @@
 /**
- * E-05 / CMP-10 — the ONLY model route: OpenRouter.
+ * E-05 / CMP-10 — Ellie's model route: an OpenAI-compatible gateway,
+ * OpenRouter by default.
  *
- * Every request body this client builds pins
- * provider.data_collection = "deny" (the provider policy as data, same
- * rule as C-12). No direct provider integration exists anywhere in this
- * module — model families are reached through OpenRouter only
- * (docs/AI-PROVIDER-POLICY.md).
+ * Default route (unchanged): OpenRouter. Every request body this
+ * client builds for that route pins provider.data_collection = "deny"
+ * (the provider policy as data, same rule as C-12), and model families
+ * are reached through OpenRouter only (docs/AI-PROVIDER-POLICY.md).
+ *
+ * Configured alternate route (owner directive, 2026-11-10): when
+ * ELLIE_MODEL_BASE_URL names a self-hosted OpenAI-compatible endpoint
+ * — the layer1labs-inference node, reached through the gateway bridge
+ * in docs/ELLIE-INFERENCE-BRIDGE.md — the same client posts to that
+ * base URL with ELLIE_MODEL_API_KEY. Two deliberate differences on
+ * that route:
+ *  - The `provider` pin is OpenRouter routing data and is omitted:
+ *    it is meaningless where there is no provider pool, and the data
+ *    posture is stronger than the pin — prompts never leave
+ *    owner-controlled hardware.
+ *  - The route is a CONFIGURATION, not a runtime fallback: a call
+ *    never silently crosses between the node and OpenRouter. If the
+ *    configured route does not answer, the call fails with the same
+ *    typed errors as today; returning to OpenRouter is the operator
+ *    act of removing ELLIE_MODEL_BASE_URL. Deploying this route also
+ *    needs the matching AI-PROVIDER-POLICY amendment (the WS-15 /
+ *    PR #73 pattern: an owner decision, recorded).
  *
  * Profiles:
  *  - standard: ordered model list from env (ELLIE_MODELS_TEXT /
  *    ELLIE_MODELS_VISION); on 404/429/5xx the next model is tried.
- *  - CUI: data_collection deny + allow_fallbacks=false + ONLY the
- *    configured models. If no endpoint answers a CUI session, the call
- *    refuses honestly with a typed `cui_no_endpoint` error — it never
- *    silently downgrades to a non-CUI route.
+ *  - CUI: on the OpenRouter route, data_collection deny +
+ *    allow_fallbacks=false + ONLY the configured models; on the
+ *    self-hosted route, ONLY the configured models on the one
+ *    configured endpoint. If no endpoint answers a CUI session, the
+ *    call refuses honestly with a typed `cui_no_endpoint` error — it
+ *    never silently downgrades to another route.
  *
  * No API key configured is NOT an exception the caller must catch as a
  * crash: chat() throws the typed `model_not_configured` error and the
@@ -64,6 +84,18 @@ export interface OpenRouterOpts {
   apiKey?: string;
   textModels: string[];
   visionModels: string[];
+  /** Base URL of the model endpoint, WITHOUT a trailing slash; chat
+   * completions are posted to `${baseUrl}/chat/completions`. Defaults
+   * to OPENROUTER_BASE. A configured value (from
+   * ELLIE_MODEL_BASE_URL) selects the self-hosted route; its host is
+   * admitted to the egress check as an operator-named host (see
+   * security.ts allowedEgress extraHosts). */
+  baseUrl?: string;
+  /** Whether request bodies carry the OpenRouter `provider` routing
+   * object (the CMP-10 data_collection deny pin). Defaults to true on
+   * the OpenRouter route and false on a configured self-hosted route,
+   * where the field is meaningless; set explicitly only in tests. */
+  providerPin?: boolean;
   fetchImpl?: (url: string, init: RequestInit) => Promise<Response>;
   onUsage?: (info: { day: string; model: string; costUsd: number }) => Promise<void>;
 }
@@ -77,6 +109,13 @@ export const DEFAULT_VISION_MODELS = ["meta-llama/llama-3.2-11b-vision-instruct"
 
 export class OpenRouterClient implements ModelClient {
   readonly configured: boolean;
+  /** The route in force: OPENROUTER_BASE unless a self-hosted base
+   * URL was configured. Exposed read-only so tests and diagnostics
+   * can prove which route a Worker is on. */
+  readonly baseUrl: string;
+  /** Whether bodies carry the OpenRouter `provider` pin (see
+   * OpenRouterOpts.providerPin). */
+  readonly providerPin: boolean;
   private apiKey?: string;
   private textModels: string[];
   private visionModels: string[];
@@ -85,6 +124,8 @@ export class OpenRouterClient implements ModelClient {
   constructor(opts: OpenRouterOpts) {
     this.apiKey = opts.apiKey || undefined;
     this.configured = !!this.apiKey;
+    this.baseUrl = (opts.baseUrl ?? "").replace(/\/+$/, "") || OPENROUTER_BASE;
+    this.providerPin = opts.providerPin ?? (this.baseUrl === OPENROUTER_BASE);
     this.textModels = opts.textModels.length ? opts.textModels : [...DEFAULT_TEXT_MODELS];
     this.visionModels = opts.visionModels.length ? opts.visionModels : [...DEFAULT_VISION_MODELS];
     this.fetchImpl = opts.fetchImpl ?? ((url, init) => fetch(url, init));
@@ -92,7 +133,9 @@ export class OpenRouterClient implements ModelClient {
   }
 
   /** The request body for ONE model attempt. CMP-10 asserts on this
-   * exact shape: data_collection is pinned to deny on every body. */
+   * exact shape for the OpenRouter route: data_collection is pinned
+   * to deny on every body. On the self-hosted route the `provider`
+   * object is omitted entirely (see the module header). */
   buildRequestBody(model: string, req: ChatRequest): Record<string, unknown> {
     const messages = req.messages.map((m) => ({ role: m.role, content: m.content }));
     if (req.imageDataUris?.length && messages.length) {
@@ -101,6 +144,9 @@ export class OpenRouterClient implements ModelClient {
         { type: "text", text: String(req.messages[req.messages.length - 1].content) },
         ...req.imageDataUris.map((u) => ({ type: "image_url", image_url: { url: u } })),
       ];
+    }
+    if (!this.providerPin) {
+      return { model, messages };
     }
     const provider: Record<string, unknown> = { data_collection: "deny" };
     if (req.cui) provider.allow_fallbacks = false;
@@ -114,11 +160,15 @@ export class OpenRouterClient implements ModelClient {
 
   async chat(req: ChatRequest): Promise<ChatResult> {
     if (!this.apiKey) {
-      throw new EllieError("model_not_configured", "No OpenRouter API key is configured for Ellie (OPENROUTER_API_KEY is not set), so no model call can be made.");
+      const keyName = this.baseUrl === OPENROUTER_BASE ? "OPENROUTER_API_KEY" : "ELLIE_MODEL_API_KEY";
+      throw new EllieError("model_not_configured", `No model API key is configured for Ellie (${keyName} is not set), so no model call can be made.`);
     }
     const models = req.vision ? this.visionModels : this.textModels;
-    const url = `${OPENROUTER_BASE}/chat/completions`;
-    if (!allowedEgress(url).allowed) throw new EllieError("model_unavailable", "Egress refused: the model gateway is not on the allowlist.");
+    const url = `${this.baseUrl}/chat/completions`;
+    // The configured route's own host is admitted as an operator-named
+    // host; every other non-allowlisted host is still refused.
+    const configuredHost = this.baseUrl === OPENROUTER_BASE ? [] : [new URL(this.baseUrl).hostname];
+    if (!allowedEgress(url, configuredHost).allowed) throw new EllieError("model_unavailable", "Egress refused: the model gateway is not on the allowlist.");
     let lastStatus = 0;
     for (const model of models) {
       const body = this.buildRequestBody(model, req);
@@ -147,7 +197,8 @@ export class OpenRouterClient implements ModelClient {
       return { text, model: data.model ?? model, costUsd };
     }
     if (req.cui) {
-      throw new EllieError("cui_no_endpoint", `No eligible endpoint answered this CUI session (last status ${lastStatus || "none"}). The call is refused rather than downgraded: CUI sessions run only on the configured deny-collection profile.`);
+      const profile = this.providerPin ? "the configured deny-collection profile" : "the configured self-hosted endpoint";
+      throw new EllieError("cui_no_endpoint", `No eligible endpoint answered this CUI session (last status ${lastStatus || "none"}). The call is refused rather than downgraded: CUI sessions run only on ${profile}.`);
     }
     throw new EllieError("model_unavailable", `No configured model answered (last status ${lastStatus || "none"}).`);
   }

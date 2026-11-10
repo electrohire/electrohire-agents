@@ -11,6 +11,20 @@ version heading below tracks the repository release.
 
 ### Added
 
+- Ellie on the self-hosted inference node (owner directive,
+  2026-11-10): the model client takes a configured base URL
+  (`ELLIE_MODEL_BASE_URL`) and key (`ELLIE_MODEL_API_KEY`, a Worker
+  secret), so a Worker can run Ellie against an OpenAI-compatible
+  endpoint — the layer1labs-inference node through the gateway
+  bridge in docs/ELLIE-INFERENCE-BRIDGE.md — instead of OpenRouter.
+  The OpenRouter route is unchanged and remains the committed
+  default (the new variables are commented out in all three
+  wrangler.toml files); removing the variable returns a Worker to
+  OpenRouter. On the self-hosted route the OpenRouter `provider`
+  routing pin is omitted (it is meaningless off OpenRouter, and
+  prompts stay on owner-controlled hardware), the configured host
+  is admitted to the egress check as an operator-named host, and a
+  call never silently crosses routes. Ellie Worker 0.12.0.
 - Blog and events on the agent surfaces (WS-5, 2026-10-26). The blog
   data spec 004 waited for has existed since Phase B / PB-4, so the API
   gains `GET /v1/blog` and `GET /v1/blog/{slug}` (published posts only)

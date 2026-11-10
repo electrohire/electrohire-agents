@@ -33,4 +33,9 @@ PUBLIC_CONTENT_BASE_URL = "https://beta.electrohire.com"
 # honestly instead of faking output.
 ELLIE_MODELS_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
 ELLIE_MODELS_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+# Self-hosted inference route: NOT ACTIVE here — see the matching
+# block in apps/ellie/wrangler.toml and docs/ELLIE-INFERENCE-BRIDGE.md.
+# All three Workers must carry the same route configuration, or the
+# surfaces would answer from different models.
+# ELLIE_MODEL_BASE_URL = "https://<inference-gateway-host>/v1"
 ELLIE_DAILY_SPEND_CAP_USD = "5"

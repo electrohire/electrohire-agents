@@ -51,7 +51,7 @@ import {
   type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
-const ELLIE_VERSION = "0.11.0";
+const ELLIE_VERSION = "0.12.0";
 const PANEL_URL = "https://ellie-beta.electrohire.com/panel";
 
 type Env = GuardEnv & KeysEnv & ellie.EllieEnv & {
