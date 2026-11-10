@@ -46,19 +46,26 @@ run_worker_first = true
 [vars]
 # Ellie model configuration (OpenRouter — AI-PROVIDER-POLICY).
 # Model lists are ordered: the first that answers serves the call.
-ELLIE_MODELS_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
-ELLIE_MODELS_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+ELLIE_MODELS_TEXT = "NInfer"
+ELLIE_MODELS_VISION = "NInfer"
 # Self-hosted inference route (owner directive 2026-11-10; bridge in
-# docs/ELLIE-INFERENCE-BRIDGE.md). NOT ACTIVE in this committed
-# config: to activate, set ELLIE_MODEL_BASE_URL to the inference
-# gateway's /v1 base URL, set ELLIE_MODELS_TEXT/_VISION to the
-# gateway's model names ("NInfer,gpt-oss-20b" — the layer1labs node's
-# adopted primary first, its fast companion second), and place the
-# gateway key with `wrangler secret put ELLIE_MODEL_API_KEY`.
-# Removing ELLIE_MODEL_BASE_URL returns Ellie to OpenRouter with the
-# lists above; nothing else changes. Activation also needs the
-# AI-PROVIDER-POLICY amendment recorded with the owner decision.
-# ELLIE_MODEL_BASE_URL = "https://<inference-gateway-host>/v1"
+# docs/ELLIE-INFERENCE-BRIDGE.md). ACTIVE in this committed config
+# from 2026-11-10: ELLIE_MODEL_BASE_URL points at the mini-server
+# LiteLLM gateway (Tailscale Funnel ingress), which relays to the
+# layer1labs-inference engine. The model lists above name the
+# gateway's registered models: only "NInfer" is registered today
+# (gpt-oss-20b's node upstream binds the node's loopback only, so
+# it is NOT listed here; listing an unregistered model would poison
+# the fallback order). The gateway key is placed with
+# `wrangler secret put ELLIE_MODEL_API_KEY` (never in this file).
+# The AI-PROVIDER-POLICY amendment for this route (beta/test only)
+# is website-beta PR #118, merged 2026-11-10.
+# To deactivate: remove ELLIE_MODEL_BASE_URL AND restore the
+# OpenRouter model lists (they were:
+# TEXT "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini",
+# VISION "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini").
+# The OpenRouter secrets and config are untouched by activation.
+ELLIE_MODEL_BASE_URL = "https://mini-server.tailbfa48d.ts.net/v1"
 # Daily model spend cap in USD (plan Tripwire 2); the engine refuses
 # model calls once the day's ellie_usage total reaches it.
 ELLIE_DAILY_SPEND_CAP_USD = "5"
