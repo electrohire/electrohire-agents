@@ -121,10 +121,15 @@ export const EGRESS_ALLOWLIST = [
   "localhost",
 ] as const;
 
-export function allowedEgress(rawUrl: string): { allowed: boolean; host: string } {
+export function allowedEgress(rawUrl: string, extraHosts: readonly string[] = []): { allowed: boolean; host: string } {
   let host = "";
   try { host = new URL(rawUrl).hostname; } catch { return { allowed: false, host: "" }; }
-  return { allowed: (EGRESS_ALLOWLIST as readonly string[]).includes(host), host };
+  // extraHosts is for exactly one pattern: a host the operator named in
+  // configuration (e.g. Ellie's configured model-endpoint base URL,
+  // ELLIE_MODEL_BASE_URL). Naming a host in deploy configuration is the
+  // same trust act as editing this list; it is never derived from
+  // request data, and it admits only that one exact hostname.
+  return { allowed: (EGRESS_ALLOWLIST as readonly string[]).includes(host) || extraHosts.includes(host), host };
 }
 
 /** The one outbound-fetch path. A refusal is logged (metadata only). */

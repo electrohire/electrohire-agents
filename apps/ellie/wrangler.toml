@@ -13,7 +13,8 @@
 # the frozen Phase E battery, not a storage limit.
 #
 # Secrets are NOT in this file and are placed separately with
-# `wrangler secret put`: OPENROUTER_API_KEY (dedicated platform key,
+# `wrangler secret put`: OPENROUTER_API_KEY (dedicated platform key;
+# ELLIE_MODEL_API_KEY joins it when the self-hosted route is active),
 # owner-side step — until it exists, Ellie answers with the honest
 # not-configured fallback), TURNSTILE_SECRET_KEY, ELLIE_INTERNAL_KEY.
 name = "electrohire-ellie"
@@ -43,10 +44,21 @@ binding = "ASSETS"
 run_worker_first = true
 
 [vars]
-# Ellie model configuration (OpenRouter only — AI-PROVIDER-POLICY).
+# Ellie model configuration (OpenRouter — AI-PROVIDER-POLICY).
 # Model lists are ordered: the first that answers serves the call.
 ELLIE_MODELS_TEXT = "meta-llama/llama-3.3-70b-instruct,openai/gpt-4o-mini"
 ELLIE_MODELS_VISION = "meta-llama/llama-3.2-11b-vision-instruct,openai/gpt-4o-mini"
+# Self-hosted inference route (owner directive 2026-11-10; bridge in
+# docs/ELLIE-INFERENCE-BRIDGE.md). NOT ACTIVE in this committed
+# config: to activate, set ELLIE_MODEL_BASE_URL to the inference
+# gateway's /v1 base URL, set ELLIE_MODELS_TEXT/_VISION to the
+# gateway's model names ("NInfer,gpt-oss-20b" — the layer1labs node's
+# adopted primary first, its fast companion second), and place the
+# gateway key with `wrangler secret put ELLIE_MODEL_API_KEY`.
+# Removing ELLIE_MODEL_BASE_URL returns Ellie to OpenRouter with the
+# lists above; nothing else changes. Activation also needs the
+# AI-PROVIDER-POLICY amendment recorded with the owner decision.
+# ELLIE_MODEL_BASE_URL = "https://<inference-gateway-host>/v1"
 # Daily model spend cap in USD (plan Tripwire 2); the engine refuses
 # model calls once the day's ellie_usage total reaches it.
 ELLIE_DAILY_SPEND_CAP_USD = "5"
