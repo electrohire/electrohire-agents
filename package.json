@@ -1,1 +1,17 @@
-{"description":"ElectroHire for AI agents: public API, MCP server, agent skills, and SDKs","engines":{"node":">=24"},"license":"MIT","name":"electrohire-agents","packageManager":"pnpm@12.15.0","private":true,"scripts":{"build":"pnpm -r --if-present run build","typecheck":"pnpm -r --if-present run typecheck","parity":"node tools/parity-manifest.mjs"},"version":"0.1.0"}
+{
+  "description": "ElectroHire for AI agents: public API, MCP server, agent skills, and SDKs",
+  "engines": {
+    "node": ">=24"
+  },
+  "license": "MIT",
+  "name": "electrohire-agents",
+  "packageManager": "pnpm@12.15.0",
+  "private": true,
+  "scripts": {
+    "build": "pnpm -r --if-present run build",
+    "typecheck": "pnpm -r --if-present run typecheck",
+    "parity": "node tools/parity-manifest.mjs",
+    "coverage": "node tools/check-coverage.mjs"
+  },
+  "version": "0.1.0"
+}

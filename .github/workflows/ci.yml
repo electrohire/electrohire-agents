@@ -41,6 +41,18 @@ jobs:
             exit 1
           fi
 
+  coverage:
+    name: MCP + skills coverage gate (blocking)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Set up Node
+        uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+      - name: Operations, tools, skills and guides must not diverge
+        run: node tools/check-coverage.mjs
+
   python-sdk:
     name: Python SDK smoke test
     runs-on: ubuntu-latest

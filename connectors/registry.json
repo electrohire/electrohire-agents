@@ -1,13 +1,13 @@
 {
-  "version": "0.1.0",
+  "version": "0.2.0",
   "generated": "manual",
   "mcpServer": {
-    "url": "https://mcp.electrohire.com/mcp",
+    "url": "https://mcp-beta.electrohire.com/mcp",
     "transport": "streamable-http"
   },
   "api": {
-    "baseUrl": "https://api.electrohire.com",
-    "openapiUrl": "https://api.electrohire.com/openapi.json"
+    "baseUrl": "https://api-beta.electrohire.com",
+    "openapiUrl": "https://api-beta.electrohire.com/openapi.json"
   },
   "connectors": [
     {
@@ -17,7 +17,7 @@
       "transport": "http",
       "configFormat": "JSON (guide)",
       "status": "guide",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/muse",
       "configExample": "muse-connector.json",
       "readme": "README.md"
@@ -29,7 +29,7 @@
       "transport": "actions",
       "configFormat": "JSON (connector description + OpenAPI Action)",
       "status": "guide",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/openai-chatgpt",
       "configExample": "chatgpt-connector.json",
       "readme": "README.md"
@@ -41,7 +41,7 @@
       "transport": "http",
       "configFormat": "TOML",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/openai-codex",
       "configExample": "config.toml",
       "readme": "README.md"
@@ -53,7 +53,7 @@
       "transport": "stdio-bridge",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/claude-desktop",
       "configExample": "claude_desktop_config.json",
       "readme": "README.md"
@@ -65,7 +65,7 @@
       "transport": "http",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/claude-code",
       "configExample": ".mcp.json",
       "readme": "README.md"
@@ -77,7 +77,7 @@
       "transport": "stdio-bridge",
       "configFormat": "JSON + CLI",
       "status": "bridge",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/ollama",
       "configExample": "ollmcp-config.json",
       "readme": "README.md"
@@ -89,7 +89,7 @@
       "transport": "http",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/cursor",
       "configExample": "mcp.json",
       "readme": "README.md"
@@ -101,7 +101,7 @@
       "transport": "http",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/windsurf",
       "configExample": "mcp_config.json",
       "readme": "README.md"
@@ -113,7 +113,7 @@
       "transport": "http",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/vscode-copilot",
       "configExample": "mcp.json",
       "readme": "README.md"
@@ -125,7 +125,7 @@
       "transport": "http",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/gemini",
       "configExample": "settings.json",
       "readme": "README.md"
@@ -137,7 +137,7 @@
       "transport": "http",
       "configFormat": "JSON",
       "status": "config",
-      "version": "0.1.0",
+      "version": "0.2.0",
       "folder": "connectors/generic-mcp",
       "configExample": "mcp.json",
       "readme": "README.md"

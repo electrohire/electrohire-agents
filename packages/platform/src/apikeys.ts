@@ -34,6 +34,7 @@ export interface ScopeDef { id: string; group: "read" | "action"; label: string 
 export const SCOPE_CATALOG: ScopeDef[] = [
   { id: "read:content", group: "read", label: "Search and read site content, pricing and FAQ" },
   { id: "read:blog", group: "read", label: "Read blog posts" },
+  { id: "read:events", group: "read", label: "Read the public events list" },
   { id: "read:tools", group: "read", label: "Run the cost estimator, scoping checklist and timeline calculator" },
   { id: "action:ellie_session", group: "action", label: "Start an Ellie session and request an analysis" },
   { id: "action:newsletter_subscribe", group: "action", label: "Subscribe to the newsletter" },
@@ -44,6 +45,8 @@ export const SCOPE_IDS = new Set(SCOPE_CATALOG.map((s) => s.id));
 /** Scope a credential must hold for an API route (C-10 wiring). */
 export function scopeForApiPath(path: string): string | null {
   if (path.startsWith("/v1/tools/")) return "read:tools";
+  if (path === "/v1/blog" || path.startsWith("/v1/blog/")) return "read:blog";
+  if (path === "/v1/events") return "read:events";
   if (path.startsWith("/v1/content") || path === "/v1/faq" || path === "/v1/pricing") return "read:content";
   return null; // health / openapi / llms.txt carry no scope requirement
 }
@@ -56,6 +59,8 @@ export function scopeForMcpTool(name: string): string {
   // Phase E (2026-10-25): the Ellie tools are action tools under the same rule.
   if (name === "electrohire_ellie_session" || name === "electrohire_ellie_analysis") return "action:ellie_session";
   if (["electrohire_estimate_cost", "electrohire_scoping_checklist", "electrohire_timeline_calculator"].includes(name)) return "read:tools";
+  if (["electrohire_list_blog_posts", "electrohire_get_blog_post"].includes(name)) return "read:blog";
+  if (name === "electrohire_list_events") return "read:events";
   return "read:content";
 }
 /** Scope a credential must hold for a REST action route (Phase C3, C-13;

@@ -2,18 +2,16 @@
 
 ElectroHire's remote MCP server, as a Cloudflare Worker — so any MCP-capable
 agent (Claude, ChatGPT, Copilot, and others) can connect and use ElectroHire
-tools directly.
+tools directly. Live at `https://mcp-beta.electrohire.com/mcp`
+(version 0.7.0).
 
 - **Stack:** TypeScript, official `@modelcontextprotocol/sdk`, streamable HTTP
   transport (stateless), Zod input schemas.
 - **Endpoint:** `/mcp` (plus `/health` for uptime checks).
-- **Auth model (by design):** read tools are unauthenticated within rate
-  limits; action tools will act only under a user-granted authorization.
-  See `../../docs/architecture.md`.
-
-## Phase C1 status (local track)
-
-Content tools mirror the C-02 REST endpoints over the same mirrored content via `@electrohire/platform`; C-15 layers 1/2/5/6 live in that package. No binding tools exist in C1. Proven locally (wrangler dev, two independent MCP client harnesses); NOT deployed — served acceptance waits for the Workers deploy credential remedy.
+- **Auth model:** read tools are unauthenticated within rate limits (a
+  credential, when presented, is scope-checked); action tools require a
+  personal API key or OAuth 2.1 token holding the action scope, checked in
+  dispatch before the tool runs. See `../../docs/architecture.md`.
 
 ## Develop
 
@@ -24,8 +22,13 @@ pnpm --filter @electrohire/mcp dev
 pnpm --filter @electrohire/mcp typecheck
 ```
 
-## Tools (scaffold)
+## Tools (0.7.0)
 
-| Tool | Status |
-|---|---|
-| `electrohire_site_search` | Placeholder — returns a marked, empty result. Real site search lands with the content API. |
+Read: `electrohire_get_site_content`, `electrohire_get_faq`,
+`electrohire_get_pricing`, `electrohire_site_search`,
+`electrohire_list_blog_posts`, `electrohire_get_blog_post`,
+`electrohire_list_events`, `electrohire_estimate_cost`,
+`electrohire_scoping_checklist`, `electrohire_timeline_calculator`.
+
+Action: `electrohire_ellie_session`, `electrohire_ellie_analysis`,
+`electrohire_newsletter_subscribe`, `electrohire_support_ticket`.

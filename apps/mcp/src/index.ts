@@ -2,12 +2,12 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
 import { z } from "zod";
 import {
-  loadContent, estimateCost, scopingChecklist, timelineCalculator,
+  loadContent, loadBlogPosts, loadBlogPost, loadEvents, estimateCost, scopingChecklist, timelineCalculator,
   RateLimiter, globalKillOn, disabledTools, logRequest, identityLabel,
   screenInput, screenOutput, LocalAuditSink,
   extractCredential, authorizeCredential, storeFromEnv, scopeForMcpTool,
   protectedResourceMetadata, RESOURCES, MCP_ACTION_TOOLS, createActionStore, ellie,
-  type ContentEnv, type GuardEnv, type KeysEnv,
+  type ContentEnv, type PublicContentEnv, type GuardEnv, type KeysEnv,
 } from "@electrohire/platform";
 
 /**
@@ -20,9 +20,9 @@ import {
  *
  * Keep MCP_SERVER_VERSION in sync with this package's package.json version.
  */
-const MCP_SERVER_VERSION = "0.6.0";
+const MCP_SERVER_VERSION = "0.7.0";
 
-type Env = ContentEnv & GuardEnv & KeysEnv & ellie.EllieEnv;
+type Env = ContentEnv & PublicContentEnv & GuardEnv & KeysEnv & ellie.EllieEnv;
 type Cred = { kind: "api_key"; secret: string } | { kind: "oauth_double"; token: string } | { kind: "oauth_token"; token: string } | null;
 const AUTH_ISSUER = "https://auth-beta.electrohire.com";
 /** C-13 action store (LOCAL stand-in mirroring the website data layer). */
@@ -159,6 +159,32 @@ function createServer(env: Env, cred: Cred = null): McpServer {
     description: "Stage-by-stage duration ranges with waiting time (parts, labs, factories) counted, plus a total range and assumptions.",
     inputSchema: { needs: z.array(z.string()).min(1), stage: z.string().optional() },
   }, async (args) => g("electrohire_timeline_calculator", args, async () => timelineCalculator(await loadContent(env), args)));
+
+  // WS-5 (2026-10-26): blog + events read tools. The blog data spec 004
+  // waited for exists (Phase B / PB-4); the website serves published
+  // posts and events as public JSON and these tools mirror the matching
+  // REST endpoints (GET /v1/blog, /v1/blog/{slug}, /v1/events) over it.
+  server.registerTool("electrohire_list_blog_posts", {
+    title: "List blog posts",
+    description: "Published ElectroHire blog posts and checklists — title, summary, author, date, reading time, categories, and the post's URL. Metadata only; read the full text with electrohire_get_blog_post.",
+    inputSchema: {},
+  }, async (args) => g("electrohire_list_blog_posts", args, async () => loadBlogPosts(env)));
+
+  server.registerTool("electrohire_get_blog_post", {
+    title: "Read a blog post",
+    description: "The full text of one published ElectroHire blog post or checklist, by slug (from electrohire_list_blog_posts). Drafts and unpublished posts have no public form and return a not-found error.",
+    inputSchema: { slug: z.string().min(1).describe("The post's slug, as returned by electrohire_list_blog_posts.") },
+  }, async (args) => g("electrohire_get_blog_post", args, async () => {
+    const post = await loadBlogPost(env, (args as { slug: string }).slug);
+    if (!post) throw new Error("No published post with that slug. Drafts and unpublished posts have no public form.");
+    return post;
+  }));
+
+  server.registerTool("electrohire_list_events", {
+    title: "List events",
+    description: "Published ElectroHire events — title, date, time, venue, and description, newest first.",
+    inputSchema: {},
+  }, async (args) => g("electrohire_list_events", args, async () => loadEvents(env)));
 
   server.registerTool("electrohire_newsletter_subscribe", {
     title: "Subscribe to the newsletter",

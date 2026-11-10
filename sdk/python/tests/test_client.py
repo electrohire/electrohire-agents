@@ -57,6 +57,14 @@ class TestC1Coverage(unittest.TestCase):
         items = [i for g in body["groups"] for i in g["items"]]
         self.assertGreaterEqual(len(items), 5)
 
+    def test_blog_and_events(self):
+        blog = self.client.blog()
+        self.assertGreaterEqual(blog["total"], 1)
+        post = self.client.blog_post(blog["posts"][0]["slug"])
+        self.assertIn("body", post)
+        events = self.client.events()
+        self.assertIn("events", events)
+
     def test_timeline(self):
         body = self.client.timeline(["pcb", "firmware", "compliance"], "idea")
         self.assertGreater(body["totalWeeks"]["high"], body["totalWeeks"]["low"])

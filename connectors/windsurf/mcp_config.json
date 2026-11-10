@@ -1,7 +1,7 @@
 {
   "mcpServers": {
     "electrohire": {
-      "serverUrl": "https://mcp.electrohire.com/mcp",
+      "serverUrl": "https://mcp-beta.electrohire.com/mcp",
       "headers": {
         "Authorization": "Bearer ${env:ELECTROHIRE_API_KEY}"
       }

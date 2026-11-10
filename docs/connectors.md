@@ -26,23 +26,51 @@ MCP client on its own, so the guide connects it through a bridge client.
 The machine-readable list is [`connectors/registry.json`](../connectors/registry.json),
 checked in CI by `tools/validate-connectors.mjs`.
 
-> **Beta endpoints.** `https://mcp.electrohire.com/mcp` and
-> `https://api.electrohire.com` are the planned beta endpoints for the new
-> ElectroHire platform. They are not yet live production endpoints.
+## What the tools are (current surface, API / MCP 0.7.0)
+
+Read tools (no account needed on the public surfaces; a key, when sent, is
+scope-checked): `electrohire_get_site_content`, `electrohire_get_faq`,
+`electrohire_get_pricing`, `electrohire_site_search`,
+`electrohire_list_blog_posts`, `electrohire_get_blog_post`,
+`electrohire_list_events`, `electrohire_estimate_cost`,
+`electrohire_scoping_checklist`, `electrohire_timeline_calculator`.
+
+Action tools (a personal key or OAuth token carrying the action scope is
+required): `electrohire_ellie_session` and `electrohire_ellie_analysis`
+(start an Ellie analysis, then collect it), `electrohire_newsletter_subscribe`
+(double opt-in stays intact), `electrohire_support_ticket`.
+
+The REST API mirrors the same surface: `GET /v1/content`,
+`GET /v1/content/services`, `GET /v1/faq`, `GET /v1/pricing`,
+`GET /v1/blog`, `GET /v1/blog/{slug}`, `GET /v1/events`,
+`POST /v1/tools/cost-estimator`, `POST /v1/tools/scoping-checklist`,
+`POST /v1/tools/timeline-calculator`, `POST /v1/actions/ellie-session`,
+`GET /v1/ellie/analyses/{id}`, `POST /v1/actions/newsletter-subscribe`,
+`POST /v1/actions/support-ticket`, plus `GET /v1/health`,
+`GET /openapi.json`, `GET /.well-known/oauth-protected-resource`, and
+`GET /llms.txt`.
+No payments run through the API or MCP, in any phase.
+
+> **Beta endpoints.** `https://mcp-beta.electrohire.com/mcp` and
+> `https://api-beta.electrohire.com` are the live beta endpoints for the new
+> ElectroHire platform. The beta is invite-only. They are not the production
+> endpoints.
 
 ## The shared concepts (read once, every connector uses them)
 
 ### 1. Get a key in your dashboard
 
-Sign in to **your ElectroHire dashboard — the new ground-up user dashboard
-being built as part of the ElectroHire platform program** (this
-key-management feature is part of that new dashboard; it is not a feature of
-the current production app). Open **Settings → MCP API keys**, choose
-**Create key**, name the key for the client that will use it, and pick its
-scopes. The key is shown **once** — copy it then.
+Sign in to **your ElectroHire beta dashboard** (app-beta.electrohire.com —
+the beta is invite-only, so you need a beta account first; key management is
+a feature of the new beta dashboard, not of the current production app).
+Open **API Keys**, choose **+ Create a new key**, name the key for the client
+that will use it, and pick its scopes. The key is shown **once** — copy it
+then.
 
-Your dashboard is also where you manage keys after creating them: see when a
-key was last used, change its scopes, rotate it, and revoke it.
+Your dashboard is also where you manage keys after creating them: see when
+a key was last used and how often, rotate it, and revoke it. Scopes are
+never edited on a live key — changing scopes means creating a new key with
+the scopes you want and revoking the old one.
 
 ### 2. Keep it secret
 
@@ -72,14 +100,13 @@ each platform supports.
 
 Ask your agent to call the read-only `electrohire_site_search` tool (for
 example: *"Use ElectroHire to search for information about fractional
-engineering pods"*). In the scaffold release the tool returns a clearly
-marked placeholder result — that still proves the connection, the key, and
-the wiring. An answer given without a tool call means the connector is not
-active yet.
+engineering pods"*). The tool returns real ElectroHire content — that proves
+the connection, the key, and the wiring. An answer given without a tool call
+means the connector is not active yet.
 
 ### 6. Revoke and rotate
 
-Dashboard → **Settings → MCP API keys**: create the new key, update the
+Dashboard → **API Keys**: create the new key, update the
 client, confirm the test passes, then revoke the old key. Revoking takes
 effect immediately — clients still using the old key get **401** errors,
 which is also how you recognize a missing, revoked, or expired key anywhere
